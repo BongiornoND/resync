@@ -1,0 +1,836 @@
+/* Self-hosted so the packaged app doesn't depend on network access —
+   Medium doubles as the semibold (600) instance since Geoform ships no
+   dedicated weight between Medium and Bold. */
+@font-face { font-family: 'Geoform'; src: url('fonts/Geoform-Regular.otf') format('opentype'); font-weight: 400; font-style: normal; }
+@font-face { font-family: 'Geoform'; src: url('fonts/Geoform-Medium.otf') format('opentype'); font-weight: 600; font-style: normal; }
+@font-face { font-family: 'Geoform'; src: url('fonts/Geoform-Bold.otf') format('opentype'); font-weight: 700; font-style: normal; }
+
+:root {
+  color-scheme: light;
+
+  /* Brand palette (see build/brand-palette.svg): f3f9fa / 75868a / 2b2f30 /
+     1c2223 / 0f1313 neutrals, 0491ad / 6fceed teal accent. Dark mode below
+     re-maps these same colors to different roles rather than inverting. */
+  --rs-bg: #f3f9fa;
+  --rs-surface: #ffffff;
+  --rs-surface-2: #f3f9fa;
+  --rs-surface-hover: #e9f1f2;
+  --rs-input-bg: #ffffff;
+  --rs-disabled-bg: #f3f9fa;
+
+  --rs-border: rgba(117, 134, 138, 0.25);
+  --rs-border-soft: rgba(117, 134, 138, 0.15);
+  --rs-border-strong: rgba(117, 134, 138, 0.35);
+  --rs-border-topbar: rgba(117, 134, 138, 0.28);
+
+  --rs-text: #0f1313;
+  --rs-text-body: #1c2223;
+  --rs-muted: #75868a;
+
+  --rs-accent: oklch(0.5 0.09 205);
+  --rs-accent-text: oklch(0.42 0.08 205);
+  --rs-accent-border: oklch(0.55 0.09 205);
+  --rs-accent-tree-bg: oklch(0.93 0.045 210);
+  --rs-accent-tree-text: oklch(0.32 0.06 210);
+  --rs-accent-selected-bg: oklch(0.955 0.03 210);
+  --rs-accent-drop-bg: rgba(0, 150, 136, 0.12);
+
+  --rs-danger: #b3261e;
+  --rs-danger-soft-bg: rgba(179, 38, 30, 0.12);
+  --rs-success-text: #2f8557;
+  --rs-success-soft-bg: rgba(58, 168, 107, 0.12);
+  --rs-warning-text: #8a6200;
+  --rs-warning-soft-bg: rgba(224, 158, 0, 0.15);
+
+  --rs-overlay-scrim: rgba(15, 19, 19, 0.55);
+  --rs-shadow-1: rgba(0, 0, 0, 0.12);
+  --rs-shadow-2: rgba(0, 0, 0, 0.18);
+  --rs-shadow-3: rgba(0, 0, 0, 0.3);
+  --rs-scrollbar-thumb: #cdd7d9;
+  --rs-role-badge-bg: rgba(15, 19, 19, 0.08);
+  --rs-logo-text: #0f1313;
+  --rs-logo-accent: oklch(0.5 0.09 205);
+
+  /* The CAD/PDF/text preview canvas follows the current theme's own
+     surfaces (one step up for contrast against the panel behind it)
+     instead of being a fixed tone unrelated to whichever theme is active. */
+  --rs-canvas-bg: var(--rs-surface-2);
+  --rs-canvas-pdf-strip: var(--rs-surface);
+  --rs-canvas-text: var(--rs-text-body);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    /* A teal-tinted charcoal ramp — same 205 hue as the brand accent, so
+       every neutral in dark mode (bg, panels, canvas, even the window
+       titlebar) belongs to one cohesive family instead of a flat re-tint
+       of the brand's near-black ink. Enough lightness separation between
+       bg/surface/surface-2 to actually read as layered depth. */
+    --rs-bg: oklch(0.15 0.014 205);
+    --rs-surface: oklch(0.205 0.017 205);
+    --rs-surface-2: oklch(0.27 0.02 205);
+    --rs-surface-hover: oklch(0.32 0.021 205);
+    --rs-input-bg: oklch(0.24 0.018 205);
+    --rs-disabled-bg: oklch(0.19 0.015 205);
+
+    /* Softer than the light-theme borders on purpose — a bright hairline
+       around every button/card reads as a harsh "outlined chip" on a dark
+       ground. Buttons should read from their fill first, the border only
+       as a faint edge. */
+    --rs-border: rgba(255, 255, 255, 0.07);
+    --rs-border-soft: rgba(255, 255, 255, 0.05);
+    --rs-border-strong: rgba(255, 255, 255, 0.11);
+    --rs-border-topbar: rgba(255, 255, 255, 0.07);
+
+    /* Soft off-white rather than near-pure white — less harsh against a
+       dark ground, still plenty of contrast for headings and body text. */
+    --rs-text: oklch(0.95 0.012 205);
+    --rs-text-body: oklch(0.86 0.014 205);
+    --rs-muted: oklch(0.64 0.02 205);
+
+    /* Brighter, more saturated than the light-mode accent — a desaturated
+       teal reads as washed-out on a dark ground, so this leans into the
+       brand's light-cyan (#6fceed) end instead. */
+    --rs-accent: oklch(0.76 0.13 205);
+    --rs-accent-text: oklch(0.8 0.13 205);
+    --rs-accent-border: oklch(0.76 0.13 205);
+    --rs-accent-tree-bg: oklch(0.32 0.07 205);
+    --rs-accent-tree-text: oklch(0.88 0.08 205);
+    --rs-accent-selected-bg: oklch(0.29 0.06 205);
+    --rs-accent-drop-bg: rgba(111, 206, 237, 0.18);
+
+    --rs-danger: #ff8577;
+    --rs-danger-soft-bg: rgba(255, 133, 119, 0.16);
+    --rs-success-text: #7fe0ab;
+    --rs-success-soft-bg: rgba(127, 224, 171, 0.14);
+    --rs-warning-text: #f0cd7a;
+    --rs-warning-soft-bg: rgba(240, 205, 122, 0.16);
+
+    --rs-overlay-scrim: rgba(5, 8, 11, 0.7);
+    --rs-shadow-1: rgba(0, 0, 0, 0.35);
+    --rs-shadow-2: rgba(0, 0, 0, 0.45);
+    --rs-shadow-3: rgba(0, 0, 0, 0.55);
+    --rs-scrollbar-thumb: rgba(255, 255, 255, 0.16);
+    --rs-role-badge-bg: rgba(255, 255, 255, 0.08);
+    --rs-logo-text: #fff;
+    --rs-logo-accent: #6fceed;
+
+    --rs-canvas-bg: var(--rs-surface-2);
+    --rs-canvas-pdf-strip: var(--rs-surface);
+    --rs-canvas-text: var(--rs-text-body);
+  }
+}
+
+/* Manual override (Settings > Appearance) always wins over the OS
+   preference — a data-theme attribute set by app.js on <html>. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --rs-bg: oklch(0.15 0.014 205);
+  --rs-surface: oklch(0.205 0.017 205);
+  --rs-surface-2: oklch(0.27 0.02 205);
+  --rs-surface-hover: oklch(0.32 0.021 205);
+  --rs-input-bg: oklch(0.24 0.018 205);
+  --rs-disabled-bg: oklch(0.19 0.015 205);
+
+  --rs-border: rgba(255, 255, 255, 0.07);
+  --rs-border-soft: rgba(255, 255, 255, 0.05);
+  --rs-border-strong: rgba(255, 255, 255, 0.11);
+  --rs-border-topbar: rgba(255, 255, 255, 0.07);
+
+  --rs-text: oklch(0.95 0.012 205);
+  --rs-text-body: oklch(0.86 0.014 205);
+  --rs-muted: oklch(0.64 0.02 205);
+
+  --rs-accent: oklch(0.76 0.13 205);
+  --rs-accent-text: oklch(0.8 0.13 205);
+  --rs-accent-border: oklch(0.76 0.13 205);
+  --rs-accent-tree-bg: oklch(0.32 0.07 205);
+  --rs-accent-tree-text: oklch(0.88 0.08 205);
+  --rs-accent-selected-bg: oklch(0.29 0.06 205);
+  --rs-accent-drop-bg: rgba(111, 206, 237, 0.18);
+
+  --rs-danger: #ff8577;
+  --rs-danger-soft-bg: rgba(255, 133, 119, 0.16);
+  --rs-success-text: #7fe0ab;
+  --rs-success-soft-bg: rgba(127, 224, 171, 0.14);
+  --rs-warning-text: #f0cd7a;
+  --rs-warning-soft-bg: rgba(240, 205, 122, 0.16);
+
+  --rs-overlay-scrim: rgba(5, 8, 11, 0.7);
+  --rs-shadow-1: rgba(0, 0, 0, 0.35);
+  --rs-shadow-2: rgba(0, 0, 0, 0.45);
+  --rs-shadow-3: rgba(0, 0, 0, 0.55);
+  --rs-scrollbar-thumb: rgba(255, 255, 255, 0.16);
+  --rs-role-badge-bg: rgba(255, 255, 255, 0.08);
+  --rs-logo-text: #fff;
+  --rs-logo-accent: #6fceed;
+
+  --rs-canvas-bg: var(--rs-surface-2);
+  --rs-canvas-pdf-strip: var(--rs-surface);
+  --rs-canvas-text: var(--rs-text-body);
+}
+
+/* A traditional flat-gray dark mode — same depth structure as the teal
+   dark theme above (identical lightness steps), just with the hue tint
+   stripped out of the neutrals. The accent, status colors, and logo stay
+   exactly as they are in the teal theme — this is "neutral surfaces with
+   a colored accent," not a second unrelated palette. */
+:root[data-theme="dark-gray"] {
+  color-scheme: dark;
+  --rs-bg: oklch(0.15 0 0);
+  --rs-surface: oklch(0.205 0 0);
+  --rs-surface-2: oklch(0.27 0 0);
+  --rs-surface-hover: oklch(0.32 0 0);
+  --rs-input-bg: oklch(0.24 0 0);
+  --rs-disabled-bg: oklch(0.19 0 0);
+
+  --rs-border: rgba(255, 255, 255, 0.07);
+  --rs-border-soft: rgba(255, 255, 255, 0.05);
+  --rs-border-strong: rgba(255, 255, 255, 0.11);
+  --rs-border-topbar: rgba(255, 255, 255, 0.07);
+
+  --rs-text: oklch(0.95 0 0);
+  --rs-text-body: oklch(0.86 0 0);
+  --rs-muted: oklch(0.64 0 0);
+
+  --rs-accent: oklch(0.76 0.13 205);
+  --rs-accent-text: oklch(0.8 0.13 205);
+  --rs-accent-border: oklch(0.76 0.13 205);
+  --rs-accent-tree-bg: oklch(0.32 0.07 205);
+  --rs-accent-tree-text: oklch(0.88 0.08 205);
+  --rs-accent-selected-bg: oklch(0.29 0.06 205);
+  --rs-accent-drop-bg: rgba(111, 206, 237, 0.18);
+
+  --rs-danger: #ff8577;
+  --rs-danger-soft-bg: rgba(255, 133, 119, 0.16);
+  --rs-success-text: #7fe0ab;
+  --rs-success-soft-bg: rgba(127, 224, 171, 0.14);
+  --rs-warning-text: #f0cd7a;
+  --rs-warning-soft-bg: rgba(240, 205, 122, 0.16);
+
+  --rs-overlay-scrim: rgba(5, 8, 11, 0.7);
+  --rs-shadow-1: rgba(0, 0, 0, 0.35);
+  --rs-shadow-2: rgba(0, 0, 0, 0.45);
+  --rs-shadow-3: rgba(0, 0, 0, 0.55);
+  --rs-scrollbar-thumb: rgba(255, 255, 255, 0.16);
+  --rs-role-badge-bg: rgba(255, 255, 255, 0.08);
+  --rs-logo-text: #fff;
+  --rs-logo-accent: #6fceed;
+
+  --rs-canvas-bg: var(--rs-surface-2);
+  --rs-canvas-pdf-strip: var(--rs-surface);
+  --rs-canvas-text: var(--rs-text-body);
+}
+:root[data-theme="light"] { color-scheme: light; }
+
+* { box-sizing: border-box; }
+
+/* Several components set their own `display` (flex/block/grid) at equal
+   CSS specificity to the browser's built-in `[hidden] { display: none }`
+   rule. Author styles beat UA styles at a tie regardless of source order,
+   so without this, toggling the `hidden` attribute from app.js silently
+   does nothing visually even though the DOM property flips correctly. */
+[hidden] { display: none !important; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--rs-bg);
+}
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: var(--rs-scrollbar-thumb); border-radius: 4px; }
+
+button { font-family: inherit; }
+
+/* Set on body, not .app-shell — the overlay modals (settings, connect,
+   sign-in, members, etc.) are siblings of .app-shell in the DOM, appended
+   directly to body, so they never inherited a font set only on .app-shell. */
+body { font-family: 'Geoform', sans-serif; }
+
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100%;
+  background: var(--rs-bg);
+  color: var(--rs-text-body);
+  overflow: hidden;
+}
+
+/* Top bar */
+.topbar {
+  flex: 0 0 auto;
+  height: 64px;
+  background: var(--rs-surface);
+  border-bottom: 1px solid var(--rs-border-topbar);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 32px;
+  gap: 24px;
+  /* The window's native titlebar is hidden in the Electron build (see
+     main.js) with the topbar standing in for it — this makes the bar
+     itself draggable so the window can still be moved, while every
+     actual control inside it opts back out below. No-op in a plain
+     browser tab (dev-server testing), where there's no frameless window
+     for this property to do anything to. */
+  -webkit-app-region: drag;
+}
+.electron-app .topbar { padding-right: 150px; } /* reserve space for the native min/max/close cluster */
+.topbar-left { display: flex; align-items: center; gap: 32px; }
+.logo-text { fill: var(--rs-logo-text); }
+.logo-accent { fill: var(--rs-logo-accent); }
+.tabs { display: flex; align-items: center; gap: 28px; height: 64px; }
+.tabs, .search-box, .icon-btn, .avatar, .notif-panel { -webkit-app-region: no-drag; }
+.tab {
+  height: 64px; display: flex; align-items: center;
+  font-size: 14px; font-weight: 600; color: var(--rs-muted);
+  border-bottom: 2px solid transparent; cursor: pointer;
+}
+.tab.active { color: var(--rs-accent-text); border-bottom-color: var(--rs-accent-border); }
+
+.topbar-right { display: flex; align-items: center; gap: 16px; }
+.search-box {
+  position: relative; display: flex; align-items: center; gap: 8px;
+  background: var(--rs-surface-2); border: 1px solid var(--rs-border-strong);
+  border-radius: 6px; padding: 7px 12px; width: 240px;
+}
+.search-box svg { flex: 0 0 auto; stroke: var(--rs-muted); }
+.search-box input {
+  border: none; background: none; outline: none; font-size: 13px; color: var(--rs-text);
+  width: 100%; font-family: inherit;
+}
+.search-box input::placeholder { color: var(--rs-muted); }
+.search-results {
+  position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 500;
+  background: var(--rs-surface); border: 1px solid var(--rs-border); border-radius: 8px;
+  box-shadow: 0 12px 32px var(--rs-shadow-2); max-height: 320px; overflow-y: auto; padding: 6px;
+}
+.search-result-row {
+  display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 5px; cursor: pointer; font-size: 13px;
+}
+.search-result-row:hover { background: var(--rs-surface-2); }
+.search-result-icon { flex: 0 0 auto; font-size: 13px; }
+.search-result-name { color: var(--rs-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.icon-btn {
+  width: 34px; height: 34px; border-radius: 50%; background: transparent; border: none;
+  display: flex; align-items: center; justify-content: center; cursor: pointer; flex: 0 0 auto; padding: 0;
+}
+.icon-btn:hover { background: var(--rs-surface-2); }
+.icon-btn svg { stroke: var(--rs-text-body); }
+.avatar {
+  width: 34px; height: 34px; border-radius: 50%; background: var(--rs-text-body); color: #ffffff;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 600; font-family: 'Geoform', sans-serif;
+  cursor: pointer; flex: 0 0 auto;
+}
+.avatar.signed-out { background: transparent; border: 1.5px dashed var(--rs-muted); color: var(--rs-muted); font-size: 16px; }
+.avatar-img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
+
+/* Notification bell */
+.notif-btn { position: relative; }
+.notif-dot {
+  position: absolute; top: 7px; right: 7px; width: 8px; height: 8px; border-radius: 50%;
+  background: var(--rs-danger); border: 1.5px solid var(--rs-surface);
+}
+.notif-panel {
+  position: absolute; top: calc(100% + 6px); right: 32px; z-index: 500; width: 340px;
+  background: var(--rs-surface); border: 1px solid var(--rs-border); border-radius: 8px;
+  box-shadow: 0 12px 32px var(--rs-shadow-2); max-height: 420px; display: flex; flex-direction: column;
+}
+.notif-panel-header {
+  display: flex; align-items: center; justify-content: space-between; padding: 12px 14px;
+  border-bottom: 1px solid var(--rs-border-soft); font-size: 12.5px; font-weight: 600; color: var(--rs-text);
+}
+.notif-mark-all { background: none; border: none; color: var(--rs-accent-text); font-size: 12px; cursor: pointer; font-family: inherit; }
+.notif-mark-all:hover { text-decoration: underline; }
+.notif-list { overflow-y: auto; }
+.notif-row {
+  display: flex; flex-direction: column; gap: 3px; padding: 10px 14px; cursor: pointer;
+  border-bottom: 1px solid var(--rs-border-soft);
+}
+.notif-row:hover { background: var(--rs-surface-2); }
+.notif-row.unread { background: color-mix(in oklch, var(--rs-accent) 8%, transparent); }
+.notif-row .notif-message { font-size: 13px; color: var(--rs-text-body); }
+.notif-row .notif-time { font-size: 11px; color: var(--rs-muted); }
+
+/* Upload queue — lets the picker/drop targets keep accepting more files
+   while a batch works through one at a time in the background, instead of
+   the toolbar button locking up (and giving zero feedback) for the whole
+   batch's duration. */
+.upload-queue-wrap { position: relative; }
+.upload-queue-btn { white-space: nowrap; }
+.upload-queue-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px;
+  background: var(--rs-accent); color: #ffffff; font-size: 10px; font-weight: 700; margin-left: 4px;
+}
+.upload-queue-panel { top: calc(100% + 6px); right: 0; left: auto; width: 300px; }
+.upload-queue-row {
+  display: flex; flex-direction: column; gap: 3px; padding: 10px 14px;
+  border-bottom: 1px solid var(--rs-border-soft);
+}
+.upload-queue-row .upload-queue-name {
+  font-size: 13px; color: var(--rs-text-body); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.upload-queue-row .upload-queue-status { font-size: 11px; }
+.upload-queue-row .upload-queue-status.pending { color: var(--rs-muted); }
+.upload-queue-row .upload-queue-status.uploading { color: var(--rs-accent-text); }
+.upload-queue-row .upload-queue-status.done { color: var(--rs-success-text); }
+.upload-queue-row .upload-queue-status.error { color: var(--rs-danger); }
+
+/* Screens */
+.screen { flex: 1; overflow: hidden; display: none; }
+.screen:not([hidden]) { display: flex; }
+
+.projects-screen { flex-direction: column; overflow-y: auto; padding: 40px 48px 60px; }
+.screen-header { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 32px; }
+.screen-title { font-family: 'Geoform', sans-serif; font-weight: 700; font-size: 30px; color: var(--rs-text); }
+.screen-subtitle { font-size: 14px; color: var(--rs-muted); margin-top: 4px; }
+
+.projects-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 24px; }
+.project-card {
+  position: relative; width: 100%; aspect-ratio: 1/1; border-radius: 8px; overflow: hidden;
+  border: 1px solid var(--rs-border); cursor: pointer;
+  background: linear-gradient(135deg, #dbe7e9, #c3d6d9);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .project-card { background: linear-gradient(135deg, oklch(0.3 0.022 205), oklch(0.205 0.017 205)); }
+}
+:root[data-theme="dark"] .project-card { background: linear-gradient(135deg, oklch(0.3 0.022 205), oklch(0.205 0.017 205)); }
+:root[data-theme="dark-gray"] .project-card { background: linear-gradient(135deg, oklch(0.3 0 0), oklch(0.205 0 0)); }
+.project-card.add-card {
+  background: var(--rs-surface-2);
+  border: 1px dashed var(--rs-border-strong);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--rs-muted);
+}
+.project-card.add-card:hover { background: var(--rs-surface-hover); border-color: var(--rs-accent); color: var(--rs-accent); }
+.project-card.add-card .add-card-icon { font-size: 28px; line-height: 1; }
+.project-card.add-card .add-card-label { font-size: 13px; font-weight: 600; margin-top: 4px; }
+.project-card .scrim {
+  position: absolute; inset: 0;
+  background: linear-gradient(180deg, rgba(15, 19, 19, 0) 40%, rgba(15, 19, 19, 0.78) 100%);
+  pointer-events: none;
+}
+.project-card .card-body { position: absolute; left: 0; right: 0; bottom: 0; padding: 16px 18px; display: flex; flex-direction: column; gap: 10px; }
+.card-actions { position: absolute; top: 8px; right: 8px; display: flex; gap: 6px; z-index: 1; }
+.card-icon-btn {
+  width: 26px; height: 26px; border-radius: 50%; border: none; background: rgba(0, 0, 0, 0.45);
+  color: #ffffff; display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0;
+}
+.card-icon-btn:hover { background: rgba(0, 0, 0, 0.65); }
+.card-name { font-family: 'Geoform', sans-serif; font-weight: 600; font-size: 15px; color: #ffffff; }
+.card-updated { font-size: 12.5px; color: rgba(255, 255, 255, 0.75); margin-top: 3px; }
+.card-footer-row { display: flex; align-items: center; justify-content: space-between; }
+.owners { display: flex; }
+.avatar-chip {
+  width: 24px; height: 24px; border-radius: 50%; color: #ffffff;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 9.5px; font-weight: 600; font-family: 'Geoform', sans-serif;
+  border: 2px solid #ffffff; margin-left: -6px;
+}
+.avatar-chip:first-child { margin-left: 0; }
+.status-pill { font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 20px; }
+
+/* Browser screen */
+.browser-screen { flex-direction: row; }
+
+.tree-sidebar {
+  flex: 0 0 260px; background: var(--rs-surface); border-right: 1px solid var(--rs-border);
+  padding: 22px 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px;
+}
+.tree-title { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; color: var(--rs-muted); text-transform: uppercase; padding: 6px 10px 10px; }
+.folder-tree { display: flex; flex-direction: column; gap: 2px; }
+.tree-row {
+  display: flex; align-items: center; gap: 6px; padding: 9px 12px; border-radius: 5px;
+  font-size: 13px; color: var(--rs-text-body); cursor: pointer;
+}
+.tree-row:hover { background: var(--rs-surface-2); }
+.tree-row.active { font-weight: 600; background: var(--rs-accent-tree-bg); color: var(--rs-accent-tree-text); }
+.tree-row.drop-target { background: var(--rs-accent-drop-bg); outline: 2px dashed var(--rs-accent); outline-offset: -2px; }
+.tree-row .chevron { width: 9px; color: var(--rs-muted); }
+
+.local-tool-btn {
+  display: block; width: 100%; text-align: left; font-size: 12.5px; color: var(--rs-text-body);
+  background: var(--rs-surface-2); border: 1px solid var(--rs-border-strong); border-radius: 6px;
+  padding: 9px 14px; cursor: pointer;
+}
+.local-tool-btn:hover { background: var(--rs-surface-hover); }
+.local-tool-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.local-tool-btn:disabled:hover { background: var(--rs-surface-2); }
+
+.file-list-panel { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: var(--rs-surface); }
+.breadcrumbs-row {
+  padding: 16px 24px; border-bottom: 1px solid var(--rs-border);
+  font-size: 13px; color: var(--rs-muted); display: flex; align-items: center; gap: 6px;
+}
+.breadcrumbs-row a { color: var(--rs-accent); cursor: pointer; text-decoration: none; }
+.breadcrumbs-row .current { color: var(--rs-text); font-weight: 600; }
+
+.file-table { flex: 1; overflow: auto; }
+.file-table-header {
+  display: grid; grid-template-columns: minmax(220px, 1fr) 70px 80px 110px 60px;
+  align-items: center; column-gap: 12px; padding: 9px 24px;
+  border-bottom: 1px solid var(--rs-border);
+  font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase;
+  color: var(--rs-muted); min-width: 620px;
+}
+.file-table-body { min-width: 620px; }
+.file-row {
+  display: grid; grid-template-columns: minmax(220px, 1fr) 70px 80px 110px 60px;
+  align-items: center; column-gap: 12px; padding: 11px 24px;
+  border-bottom: 1px solid var(--rs-border-soft); cursor: pointer;
+}
+.file-row:hover { background: var(--rs-surface-2); }
+.file-row.selected { background: var(--rs-accent-selected-bg); }
+.file-row.drop-target { background: var(--rs-accent-drop-bg); outline: 2px dashed var(--rs-accent); outline-offset: -2px; }
+.row-actions { display: flex; gap: 4px; opacity: 0; justify-content: flex-end; }
+.file-row:hover .row-actions { opacity: 1; }
+.row-action-btn {
+  width: 24px; height: 24px; border-radius: 5px; border: none; background: transparent;
+  color: var(--rs-muted); display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0;
+}
+.row-action-btn:hover { background: var(--rs-surface-hover); color: var(--rs-text); }
+.row-action-btn.danger:hover { background: var(--rs-danger-soft-bg); color: var(--rs-danger); }
+.name-cell { display: flex; align-items: center; gap: 10px; min-width: 0; overflow: hidden; }
+.file-badge {
+  width: 30px; height: 30px; border-radius: 5px; display: flex; align-items: center; justify-content: center;
+  flex: 0 0 auto;
+}
+.file-name { font-size: 13.5px; color: var(--rs-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.file-type, .file-size, .file-modified { font-size: 13px; color: var(--rs-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.muted { color: var(--rs-muted); font-size: 13px; }
+.muted.small { font-size: 11px; }
+
+/* File tag chips (inline in file rows + details panel) */
+.file-tags { display: flex; gap: 4px; flex-wrap: wrap; margin-left: 4px; }
+.tag-chip {
+  display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px; font-weight: 600;
+  padding: 2px 8px; border-radius: 20px; white-space: nowrap;
+  /* Tag colors are arbitrary, so an inset ring (relative to the chip's own
+     fill, not the theme) keeps an edge even when the color is close to
+     whatever surface the chip happens to sit on. Text color itself is set
+     inline per-chip by contrastTextColor() in app.js. */
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.18);
+}
+.tag-chip .tag-remove { cursor: pointer; opacity: 0.8; }
+.tag-chip .tag-remove:hover { opacity: 1; }
+.tag-add-btn {
+  display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px;
+  border-radius: 50%; border: 1px dashed var(--rs-border-strong); color: var(--rs-muted);
+  background: none; cursor: pointer; font-size: 12px; line-height: 1; padding: 0;
+}
+.tag-add-btn:hover { background: var(--rs-surface-2); color: var(--rs-text); }
+.tag-picker {
+  position: fixed; z-index: 2100; background: var(--rs-surface); border: 1px solid var(--rs-border);
+  border-radius: 8px; box-shadow: 0 12px 32px var(--rs-shadow-2); padding: 6px; min-width: 180px;
+}
+.tag-picker-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 5px; cursor: pointer; font-size: 12.5px; color: var(--rs-text-body); }
+.tag-picker-row:hover { background: var(--rs-surface-2); }
+.tag-picker-dot {
+  width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto;
+  /* Swatch color is arbitrary — without a border, a dark tag on a dark
+     theme (or a light tag on a light theme) disappears into the dropdown
+     background entirely. */
+  box-shadow: 0 0 0 1px var(--rs-border-strong);
+}
+.tag-picker-new { display: flex; gap: 6px; padding: 6px; border-top: 1px solid var(--rs-border-soft); margin-top: 4px; }
+.tag-picker-new input {
+  flex: 1; min-width: 0; font-size: 12px; padding: 6px 8px; border: 1px solid var(--rs-border-strong);
+  border-radius: 5px; font-family: inherit; background: var(--rs-input-bg); color: var(--rs-text-body);
+}
+
+/* Metadata / preview panel */
+.metadata-panel {
+  flex: 0 0 360px; background: var(--rs-surface); border-left: 1px solid var(--rs-border);
+  padding: 24px; overflow-y: auto; display: flex; flex-direction: column; gap: 22px;
+}
+
+.preview-render {
+  position: relative; width: 100%; aspect-ratio: 4/3; border-radius: 8px; overflow: hidden;
+  background: var(--rs-canvas-bg); cursor: pointer;
+}
+.preview-viewport { position: absolute; inset: 0; }
+
+.preview-image {
+  position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: var(--rs-canvas-bg);
+}
+.preview-pdf-container { position: absolute; inset: 0; overflow-y: auto; background: var(--rs-canvas-pdf-strip); padding: 12px; }
+.preview-pdf-container canvas { display: block; margin: 0 auto 12px; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4); max-width: 100%; height: auto; }
+.preview-text {
+  position: absolute; inset: 0; margin: 0; overflow: auto; padding: 16px; box-sizing: border-box;
+  background: var(--rs-canvas-bg); color: var(--rs-canvas-text); font-family: 'IBM Plex Mono', monospace; font-size: 12.5px;
+  line-height: 1.6; white-space: pre-wrap; word-break: break-word;
+}
+.preview-table-container { position: absolute; inset: 0; overflow: auto; background: #ffffff; padding: 4px; box-sizing: border-box; }
+.preview-table-container table { border-collapse: collapse; font-size: 12px; width: 100%; }
+.preview-table-container th, .preview-table-container td {
+  border: 1px solid rgba(117, 134, 138, 0.25); padding: 5px 9px; text-align: left; white-space: nowrap;
+}
+.preview-table-container th { background: #f3f9fa; font-weight: 600; position: sticky; top: 0; }
+
+.preview-placeholder {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  color: #9aa8ab; font-size: 12.5px; text-align: center; padding: 12px; pointer-events: none;
+}
+.preview-render.has-preview .preview-placeholder { display: none; }
+
+.preview-type-badge {
+  position: absolute; top: 10px; left: 10px; font-size: 10.5px; font-weight: 600;
+  letter-spacing: 0.04em; text-transform: uppercase; padding: 4px 9px; border-radius: 20px;
+  background: rgba(0, 0, 0, 0.55); color: #ffffff; backdrop-filter: blur(4px); pointer-events: none;
+}
+.preview-render.fullscreen .preview-type-badge { top: 16px; left: 16px; }
+
+.preview-render.fullscreen {
+  position: fixed; inset: 0; width: 100vw; height: 100vh; aspect-ratio: auto;
+  border-radius: 0; z-index: 1000; cursor: default;
+}
+.fullscreen-close {
+  position: absolute; top: 16px; right: 16px; width: 36px; height: 36px; border-radius: 50%;
+  border: none; background: rgba(0, 0, 0, 0.5); color: #ffffff; font-size: 20px; line-height: 1;
+  cursor: pointer; z-index: 1001;
+}
+.fullscreen-close:hover { background: rgba(0, 0, 0, 0.7); }
+/* This overlay is position:fixed/inset:0, bypassing the topbar's own
+   padding-right reservation for the native titlebar overlay — without this,
+   the close button sits directly under the real OS caption buttons, which
+   always win the click since they're actual window chrome, not page z-index. */
+.electron-app .fullscreen-close { top: 52px; }
+
+#preview-assembly-tree {
+  display: none;
+}
+#preview-assembly-tree.fullscreen-visible {
+  display: block; position: fixed; top: 16px; left: 16px; bottom: 16px; width: 260px;
+  background: rgba(30, 31, 34, 0.85); border-radius: 8px; padding: 14px; overflow-y: auto;
+  color: #e6e6e6; font-size: 13px; z-index: 1001; backdrop-filter: blur(6px);
+}
+#preview-assembly-tree label { display: flex; align-items: center; gap: 6px; padding: 3px 0; cursor: pointer; }
+#preview-assembly-tree .children { margin-left: 16px; border-left: 1px solid rgba(255, 255, 255, 0.15); padding-left: 8px; }
+
+.file-details { display: flex; flex-direction: column; gap: 22px; }
+.file-title { font-family: 'Geoform', sans-serif; font-weight: 700; font-size: 17px; color: var(--rs-text); word-break: break-word; }
+.file-subtitle { font-size: 13px; color: var(--rs-muted); margin-top: 3px; }
+.pill-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.pill { font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 20px; }
+.meta-row { display: flex; justify-content: space-between; font-size: 13px; }
+.meta-row .k { color: var(--rs-muted); }
+.meta-row .v { color: var(--rs-text-body); font-weight: 500; }
+.section-label { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--rs-muted); margin-bottom: 10px; }
+.section-label-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.section-label-row .section-label { margin-bottom: 0; }
+.collab-row { display: flex; gap: 8px; }
+.version-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--rs-border-soft); }
+.version-row-main {
+  display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; cursor: pointer;
+  padding: 3px 5px; margin: -3px -5px; border-radius: 5px;
+}
+.version-row-main:hover { background: var(--rs-surface-2); }
+.version-row-main-top { display: flex; align-items: center; gap: 8px; }
+.version-label { font-size: 13px; font-weight: 600; color: var(--rs-text); }
+.version-current { font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 20px; background: var(--rs-surface-2); color: var(--rs-muted); margin-left: 8px; }
+.version-message { font-size: 11.5px; color: var(--rs-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.version-date { font-size: 12px; color: var(--rs-muted); white-space: nowrap; }
+.version-restore-btn { flex: 0 0 auto; }
+.version-author {
+  width: 20px; height: 20px; border-radius: 50%; background: var(--rs-text-body); color: #ffffff;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 8.5px; font-weight: 600; font-family: 'Geoform', sans-serif;
+}
+
+/* Activity feed */
+.activity-list { display: flex; flex-direction: column; gap: 2px; max-height: 420px; overflow-y: auto; }
+.activity-entry-row { display: flex; flex-direction: column; gap: 2px; padding: 9px 0; border-bottom: 1px solid var(--rs-border-soft); }
+.activity-entry-text { font-size: 12.5px; color: var(--rs-text-body); }
+.activity-entry-text strong { color: var(--rs-text); font-weight: 600; }
+.activity-entry-time { font-size: 11px; color: var(--rs-muted); }
+
+/* File list toolbar (breadcrumbs + upload/new-folder actions) */
+.file-list-toolbar {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 0 8px 0 0; border-bottom: 1px solid var(--rs-border);
+}
+.file-list-toolbar .breadcrumbs-row { border-bottom: none; flex: 1; min-width: 0; }
+.file-list-actions { display: flex; gap: 12px; flex: 0 0 auto; padding-right: 20px; }
+.file-list-actions .local-tool-btn { white-space: nowrap; padding: 9px 16px; }
+
+/* Version history rows (real data now) */
+.version-list { display: flex; flex-direction: column; gap: 2px; }
+
+/* Checkout/check-in */
+.lock-badge { font-size: 12px; flex: 0 0 auto; filter: grayscale(1) opacity(0.6); }
+.lock-status {
+  font-size: 12.5px; font-weight: 600; padding: 8px 12px; border-radius: 6px;
+  display: flex; align-items: center; gap: 6px;
+}
+.lock-status.free { background: var(--rs-success-soft-bg); color: var(--rs-success-text); }
+.lock-status.mine { background: var(--rs-warning-soft-bg); color: var(--rs-warning-text); }
+.lock-status.other { background: var(--rs-danger-soft-bg); color: var(--rs-danger); }
+
+/* Connect-to-server gate */
+.connect-overlay {
+  position: fixed; inset: 0; z-index: 2000; background: var(--rs-overlay-scrim);
+  display: flex; align-items: center; justify-content: center;
+}
+.connect-card {
+  background: var(--rs-surface); border-radius: 10px; padding: 28px; width: 360px;
+  display: flex; flex-direction: column; gap: 10px;
+  box-shadow: 0 20px 60px var(--rs-shadow-3);
+}
+.connect-title { font-family: 'Geoform', sans-serif; font-weight: 700; font-size: 17px; color: var(--rs-text); }
+.connect-subtitle { font-size: 13px; color: var(--rs-muted); margin-bottom: 6px; }
+#server-url-input {
+  font-size: 13px; padding: 9px 12px; border: 1px solid var(--rs-border-strong);
+  border-radius: 6px; font-family: inherit; background: var(--rs-input-bg); color: var(--rs-text-body);
+}
+#connect-btn {
+  background: var(--rs-accent); color: #ffffff; border: none; border-radius: 6px;
+  padding: 9px 0; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+#connect-btn:hover { opacity: 0.9; }
+
+#input-modal-form { display: flex; flex-direction: column; gap: 14px; }
+#input-modal-input {
+  font-size: 13px; padding: 9px 12px; border: 1px solid var(--rs-border-strong);
+  border-radius: 6px; font-family: inherit; background: var(--rs-input-bg); color: var(--rs-text-body);
+}
+.input-modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.input-modal-actions .connect-secondary-btn { padding: 8px 16px; }
+#input-modal-ok-btn {
+  background: var(--rs-accent); color: #ffffff; border: none; border-radius: 6px;
+  padding: 8px 16px; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit;
+}
+#input-modal-ok-btn:hover { opacity: 0.9; }
+.connect-error { min-height: 14px; color: var(--rs-danger) !important; }
+.connect-subtitle.small { font-size: 11px; margin-bottom: 0; margin-top: -2px; }
+
+.connect-divider {
+  display: flex; align-items: center; gap: 10px; color: var(--rs-muted); font-size: 11px;
+  text-transform: uppercase; letter-spacing: 0.04em; margin: 2px 0;
+}
+.connect-divider::before, .connect-divider::after { content: ''; flex: 1; height: 1px; background: var(--rs-border); }
+
+.connect-secondary-btn {
+  background: transparent; color: var(--rs-accent); border: 1px solid var(--rs-border-strong);
+  border-radius: 6px; padding: 9px 0; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit;
+}
+.connect-secondary-btn:hover { background: var(--rs-surface-2); }
+.connect-link-btn {
+  background: none; border: none; color: var(--rs-accent-text); font-size: 12.5px; font-weight: 600;
+  cursor: pointer; font-family: inherit; padding: 2px; text-align: center;
+}
+.connect-link-btn:hover { text-decoration: underline; }
+
+/* Demo-mode banner in the sidebar — the tree-sidebar's own gap already
+   separates it from the row above; this border-top marks it as a
+   distinct callout rather than just another button. */
+.demo-mode-banner {
+  padding-top: 14px; border-top: 1px solid var(--rs-border-soft);
+  display: flex; flex-direction: column; gap: 6px;
+}
+.demo-mode-label {
+  font-family: 'Geoform', sans-serif; font-weight: 700; font-size: 11px;
+  text-transform: uppercase; letter-spacing: 0.04em; color: var(--rs-accent);
+}
+
+/* Sign-in gate */
+.signin-card { width: 420px; display: flex; flex-direction: column; align-items: center; gap: 32px; }
+.signin-panel {
+  width: 100%; background: var(--rs-surface); border: 1px solid var(--rs-border); border-radius: 10px;
+  box-shadow: 0 20px 60px var(--rs-shadow-3); padding: 36px 36px 32px;
+  display: flex; flex-direction: column; gap: 22px; box-sizing: border-box;
+}
+.signin-title { font-family: 'Geoform', sans-serif; font-weight: 700; font-size: 20px; color: var(--rs-text); }
+.signin-subtitle { font-size: 13.5px; color: var(--rs-muted); margin-top: 5px; }
+.google-btn {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  background: var(--rs-surface); border: 1px solid var(--rs-border-strong); color: var(--rs-text-body);
+  font-size: 14px; font-weight: 600; font-family: inherit; padding: 12px 0; border-radius: 6px; cursor: pointer;
+}
+.google-btn:hover { background: var(--rs-surface-2); }
+.google-btn:disabled { opacity: 0.6; cursor: default; }
+
+/* Manage access modal */
+.members-card {
+  width: 420px; background: var(--rs-surface); border-radius: 10px; padding: 24px;
+  display: flex; flex-direction: column; gap: 16px; box-shadow: 0 20px 60px var(--rs-shadow-3);
+  box-sizing: border-box;
+}
+.members-header { display: flex; align-items: center; justify-content: space-between; }
+.members-close {
+  background: none; border: none; font-size: 20px; line-height: 1; color: var(--rs-muted); cursor: pointer; padding: 2px 4px;
+}
+.members-close:hover { color: var(--rs-text); }
+.members-list { display: flex; flex-direction: column; gap: 2px; max-height: 320px; overflow-y: auto; }
+.member-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 0;
+  border-bottom: 1px solid var(--rs-border-soft);
+}
+.member-info { display: flex; flex-direction: column; min-width: 0; }
+.member-name { font-size: 13.5px; font-weight: 600; color: var(--rs-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.member-email { font-size: 11.5px; color: var(--rs-muted); }
+.member-controls { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+.role-badge {
+  font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 20px;
+  background: var(--rs-role-badge-bg); color: var(--rs-text-body); text-transform: capitalize;
+}
+.role-badge.owner { background: var(--rs-warning-soft-bg); color: var(--rs-warning-text); }
+.role-select {
+  font-size: 12px; padding: 4px 6px; border-radius: 5px; border: 1px solid var(--rs-border-strong);
+  font-family: inherit; background: var(--rs-input-bg); color: var(--rs-text-body);
+}
+.member-remove-btn {
+  background: none; border: none; color: var(--rs-danger); font-size: 18px; line-height: 1; cursor: pointer; padding: 2px 4px;
+}
+.member-remove-btn:hover { opacity: 0.7; }
+.invite-form { display: flex; gap: 8px; }
+.invite-form input { flex: 1; min-width: 0; font-size: 13px; padding: 9px 10px; border: 1px solid var(--rs-border-strong); border-radius: 6px; font-family: inherit; background: var(--rs-input-bg); color: var(--rs-text-body); }
+.invite-form select { font-size: 13px; padding: 9px 6px; border: 1px solid var(--rs-border-strong); border-radius: 6px; font-family: inherit; background: var(--rs-input-bg); color: var(--rs-text-body); }
+
+.sync-mode-section {
+  display: flex; flex-direction: column; gap: 6px; padding-bottom: 14px;
+  border-bottom: 1px solid var(--rs-border); margin-bottom: 2px;
+}
+.sync-mode-label { font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--rs-muted); }
+#sync-mode-select {
+  font-size: 13px; padding: 9px 10px; border: 1px solid var(--rs-border-strong); border-radius: 6px;
+  font-family: inherit; background: var(--rs-input-bg); color: var(--rs-text-body); width: 100%;
+}
+#sync-mode-select:disabled { background: var(--rs-disabled-bg); color: var(--rs-muted); cursor: not-allowed; }
+
+.sync-folder-path {
+  font-size: 13px; padding: 9px 10px; border: 1px solid var(--rs-border-strong); border-radius: 6px;
+  background: var(--rs-surface-2); color: var(--rs-text-body); word-break: break-all;
+}
+
+/* Settings modal — appearance (theme) + tag management */
+.theme-switch { display: flex; gap: 6px; }
+.theme-option {
+  flex: 1; text-align: center; font-size: 12.5px; font-weight: 600; padding: 8px 0; border-radius: 6px;
+  border: 1px solid var(--rs-border-strong); background: var(--rs-surface-2); color: var(--rs-text-body); cursor: pointer;
+}
+.theme-option.active { background: var(--rs-accent); border-color: var(--rs-accent); color: #ffffff; }
+.tag-manage-row {
+  display: flex; align-items: center; gap: 10px; padding: 9px 0;
+  border-bottom: 1px solid var(--rs-border-soft);
+}
+.tag-manage-chip { font-size: 12px; padding: 4px 12px; flex: 0 0 auto; max-width: 55%; overflow: hidden; text-overflow: ellipsis; }
+.tag-manage-count { flex: 1; text-align: right; }
+.tag-new-form { display: flex; gap: 6px; margin-top: 10px; }
+/* .local-tool-btn is block/100%-width by default (built for stacked
+   sidebar buttons) — inside this flex row that fights the name input for
+   space, squeezing it down to nothing. Override back to a normal inline
+   flex item sized to its own "Add" label. */
+.tag-new-form button[type="submit"] { display: block; width: auto; flex: 0 0 auto; text-align: center; }
+.tag-new-form input[type="text"] {
+  flex: 1; min-width: 0; font-size: 13px; padding: 8px 10px; border: 1px solid var(--rs-border-strong);
+  border-radius: 6px; font-family: inherit; background: var(--rs-input-bg); color: var(--rs-text-body);
+}
+.tag-new-form input[type="color"] {
+  width: 34px; height: 34px; padding: 2px; border: 1px solid var(--rs-border-strong); border-radius: 6px;
+  background: var(--rs-input-bg); cursor: pointer;
+}
