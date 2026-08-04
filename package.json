@@ -1,13 +1,14 @@
 {
   "name": "resync",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "private": true,
   "description": "Resync desktop client — CAD file sync with a self-hosted server backend, STEP/SolidWorks 3D preview, and version history.",
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
     "viewer:dev": "node src/dev-server.js",
-    "package:win": "electron-packager . resync --platform=win32 --arch=x64 --out=../resync-dist --overwrite --prune=true --icon=build/icon.ico"
+    "package:win": "electron-packager . resync --platform=win32 --arch=x64 --out=../resync-dist --overwrite --prune=true --icon=build/icon.ico",
+    "package:release": "npm run package:win && powershell -Command \"Compress-Archive -Path ../resync-dist/resync-win32-x64/* -DestinationPath ../resync-dist/resync-win32-x64.zip -Force\""
   },
   "dependencies": {
     "google-auth-library": "^9.14.1",
