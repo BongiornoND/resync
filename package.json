@@ -11,6 +11,7 @@
     "package:release": "npm run package:win && powershell -Command \"Compress-Archive -Path ../resync-dist/resync-win32-x64/* -DestinationPath ../resync-dist/resync-win32-x64.zip -Force\""
   },
   "dependencies": {
+    "chokidar": "^3.6.0",
     "google-auth-library": "^9.14.1",
     "occt-import-js": "^0.0.23",
     "pdfjs-dist": "^6.2.108",

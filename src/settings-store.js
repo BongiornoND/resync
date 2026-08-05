@@ -80,6 +80,35 @@ function setSyncFolder(folderPath) {
   save(settings);
 }
 
+// The appearance choice ('light' | 'dark' | 'resync' | null for 'system').
+// Stored here rather than relying on the renderer's localStorage, since the
+// renderer loads over http://127.0.0.1:<random port> — a fresh, random
+// origin every launch (see static-server.js) — so localStorage looked like
+// it was resetting itself every single time the app started.
+function getTheme() {
+  return load().theme || null;
+}
+
+function setTheme(theme) {
+  const settings = load();
+  if (theme) settings.theme = theme;
+  else delete settings.theme;
+  save(settings);
+}
+
+// Which version's update banner the user has already dismissed — so it
+// doesn't come back every single launch until an actually newer release
+// ships, but does come back if one does.
+function getDismissedUpdateVersion() {
+  return load().dismissedUpdateVersion || null;
+}
+
+function setDismissedUpdateVersion(version) {
+  const settings = load();
+  settings.dismissedUpdateVersion = version;
+  save(settings);
+}
+
 module.exports = {
   getServerUrl,
   setServerUrl,
@@ -89,4 +118,8 @@ module.exports = {
   clearPinnedFingerprint,
   getSyncFolder,
   setSyncFolder,
+  getTheme,
+  setTheme,
+  getDismissedUpdateVersion,
+  setDismissedUpdateVersion,
 };

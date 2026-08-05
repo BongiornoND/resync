@@ -4,12 +4,26 @@ contextBridge.exposeInMainWorld('api', {
   theme: {
     setOverlay: (isDark) => ipcRenderer.send('theme:setOverlay', isDark),
   },
+  // Synchronous on purpose — needed before first paint (see main.js). Every
+  // other IPC call in this file is intentionally async; this is the one
+  // deliberate exception.
+  getInitialTheme: () => ipcRenderer.sendSync('settings:getThemeSync'),
+  checkForUpdates: () => ipcRenderer.invoke('app:checkForUpdates'),
+  dismissUpdate: (version) => ipcRenderer.invoke('app:dismissUpdate', version),
+  openExternal: (url) => ipcRenderer.invoke('app:openExternal', url),
   settings: {
     getServerUrl: () => ipcRenderer.invoke('settings:getServerUrl'),
     setServerUrl: (serverUrl) => ipcRenderer.invoke('settings:setServerUrl', serverUrl),
     forgetCertificate: (serverUrl) => ipcRenderer.invoke('settings:forgetCertificate', serverUrl),
     getSyncFolder: () => ipcRenderer.invoke('settings:getSyncFolder'),
     chooseSyncFolder: () => ipcRenderer.invoke('settings:chooseSyncFolder'),
+    setTheme: (theme) => ipcRenderer.invoke('settings:setTheme', theme),
+  },
+  sync: {
+    getStatus: (projectId) => ipcRenderer.invoke('sync:getStatus', projectId),
+    pull: (projectId) => ipcRenderer.invoke('sync:pull', projectId),
+    unlink: (projectId) => ipcRenderer.invoke('sync:unlink', projectId),
+    isLinked: (projectId) => ipcRenderer.invoke('sync:isLinked', projectId),
   },
   auth: {
     signIn: () => ipcRenderer.invoke('auth:signIn'),

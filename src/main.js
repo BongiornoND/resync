@@ -1,11 +1,13 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const https = require('https');
 const { createStaticServer } = require('./static-server');
 const serverAuth = require('./server-auth');
 const serverClient = require('./server-client');
 const settingsStore = require('./settings-store');
 const sldprt = require('./sldprt');
+const localSync = require('./local-sync');
 
 let mainWindow;
 
@@ -13,11 +15,13 @@ let mainWindow;
 // native titlebar overlay takes a real color, not a CSS var(), so these
 // need updating by hand if that palette moves. Windows/Linux only;
 // titleBarOverlay has no effect on macOS (its traffic-light inset is a
-// separate mechanism this app doesn't currently customize).
+// separate mechanism this app doesn't currently customize). Neutral gray
+// is now the default "dark" (was "dark-gray"); the original teal theme
+// lives on as the explicit "resync" choice (was "dark").
 const TITLEBAR_COLORS = {
   light: { color: '#ffffff', symbolColor: '#1c2223' },
-  dark: { color: '#10181d', symbolColor: '#dbe3e4' },
-  'dark-gray': { color: '#161616', symbolColor: '#dbdbdb' },
+  dark: { color: '#161616', symbolColor: '#dbdbdb' },
+  resync: { color: '#10181d', symbolColor: '#dbe3e4' },
 };
 
 async function createWindow() {
@@ -56,16 +60,111 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
+  localSync.stopAll();
   if (process.platform !== 'darwin') app.quit();
 });
 
-// Renderer tells us its resolved theme key ('light' | 'dark' | 'dark-gray',
+// Renderer tells us its resolved theme key ('light' | 'dark' | 'resync',
 // both on load and on every change, including the OS preference flipping
 // while "System" is selected) — the renderer is the one place that already
 // knows how to resolve that.
 ipcMain.on('theme:setOverlay', (_event, themeKey) => {
   if (!mainWindow || process.platform === 'darwin') return;
   mainWindow.setTitleBarOverlay({ ...(TITLEBAR_COLORS[themeKey] || TITLEBAR_COLORS.light), height: 40 });
+});
+
+// Synchronous by design: the renderer's early <head> script needs this
+// value before first paint to avoid a flash of the wrong theme, and IPC
+// invoke() is async. Stored via settingsStore (userData/settings.json),
+// not localStorage — the renderer loads over a fresh, randomly-assigned
+// http://127.0.0.1:<port> origin every launch (see static-server.js), so
+// localStorage looked like it was silently resetting on every restart.
+ipcMain.on('settings:getThemeSync', (event) => {
+  event.returnValue = settingsStore.getTheme();
+});
+
+ipcMain.handle('settings:setTheme', async (_event, theme) => {
+  settingsStore.setTheme(theme);
+  return { ok: true };
+});
+
+// --- Check for updates (GitHub Releases) ---
+
+function githubApiGet(pathname) {
+  return new Promise((resolve, reject) => {
+    const req = https.request(
+      { hostname: 'api.github.com', path: pathname, method: 'GET', headers: { 'User-Agent': 'resync-client', Accept: 'application/vnd.github+json' } },
+      (res) => {
+        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          resolve(githubApiGet(res.headers.location.replace('https://api.github.com', '')));
+          return;
+        }
+        const chunks = [];
+        res.on('data', (c) => chunks.push(c));
+        res.on('end', () => {
+          const body = Buffer.concat(chunks).toString('utf8');
+          if (res.statusCode !== 200) {
+            reject(new Error(`GitHub API returned ${res.statusCode}: ${body.slice(0, 200)}`));
+            return;
+          }
+          try {
+            resolve(JSON.parse(body));
+          } catch (err) {
+            reject(new Error('Could not parse GitHub API response: ' + err.message));
+          }
+        });
+      }
+    );
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+// Numeric segment-by-segment compare (not string compare — "0.10.0" must
+// beat "0.9.0") — good enough for this project's plain MAJOR.MINOR.PATCH
+// tags, no need for a full semver dependency.
+function isNewerVersion(latest, current) {
+  const a = latest.replace(/^v/, '').split('.').map(Number);
+  const b = current.replace(/^v/, '').split('.').map(Number);
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    const x = a[i] || 0;
+    const y = b[i] || 0;
+    if (x !== y) return x > y;
+  }
+  return false;
+}
+
+ipcMain.handle('app:checkForUpdates', async () => {
+  const currentVersion = app.getVersion();
+  try {
+    const release = await githubApiGet('/repos/BongiornoND/cad-sync/releases/latest');
+    const latestVersion = release.tag_name;
+    return {
+      ok: true,
+      currentVersion,
+      latestVersion,
+      updateAvailable: isNewerVersion(latestVersion, currentVersion),
+      releaseUrl: release.html_url,
+      dismissedVersion: settingsStore.getDismissedUpdateVersion(),
+    };
+  } catch (err) {
+    return { ok: false, currentVersion, error: err.message };
+  }
+});
+
+ipcMain.handle('app:dismissUpdate', async (_event, version) => {
+  settingsStore.setDismissedUpdateVersion(version);
+  return { ok: true };
+});
+
+ipcMain.handle('app:openExternal', async (_event, url) => {
+  // Only ever called with a URL this app itself received from the GitHub
+  // API response above, not anything user-suppliable — no need to
+  // allowlist further, but still worth keeping this handler narrow rather
+  // than a generic "open any URL" passthrough.
+  if (typeof url === 'string' && url.startsWith('https://github.com/')) {
+    await shell.openExternal(url);
+  }
 });
 
 // --- Server connection settings ---
@@ -94,10 +193,11 @@ ipcMain.handle('settings:setServerUrl', async (_event, serverUrl) => {
   }
 });
 
-// --- Local sync folder — a one-way mirror (server -> disk), not a real
-// two-way sync client. Watching the local folder and pushing edits back up
-// automatically is real scope of its own (file watching, debouncing,
-// conflict resolution) and deliberately not part of this pass. ---
+// --- Local sync folder — the initial one-shot download that seeds a
+// project's local copy. Once it finishes, server:syncProjectToLocal below
+// hands the project off to local-sync.js, which keeps it continuously
+// synced both ways (protected push, detect-and-notify pull) for as long as
+// the app runs — see that module for the real sync engine. ---
 
 function sanitizeFilename(name) {
   return name.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_');
@@ -146,12 +246,32 @@ ipcMain.handle('server:syncProjectToLocal', async (_event, { projectId, projectN
   const syncFolder = settingsStore.getSyncFolder();
   if (!syncFolder) return { ok: false, error: 'No local sync folder set yet' };
   try {
+    const wasAlreadyLinked = localSync.isLinked(projectId);
     const projectDir = path.join(syncFolder, sanitizeFilename(projectName));
     const fileCount = await syncFolderRecursive(rootFolderId, projectDir);
-    return { ok: true, fileCount, localPath: projectDir };
+    const { syncMode } = await serverClient.getFolder(rootFolderId);
+    await localSync.startSync({ projectId, projectName, rootFolderId, localDir: projectDir, syncMode });
+    return { ok: true, fileCount, localPath: projectDir, firstSync: !wasAlreadyLinked };
   } catch (err) {
     return { ok: false, error: err.message };
   }
+});
+
+ipcMain.handle('sync:getStatus', (_event, projectId) => {
+  return { ok: true, ...localSync.getStatus(projectId) };
+});
+
+ipcMain.handle('sync:pull', async (_event, projectId) => {
+  return localSync.pull(projectId);
+});
+
+ipcMain.handle('sync:unlink', (_event, projectId) => {
+  localSync.unlinkSync(projectId);
+  return { ok: true };
+});
+
+ipcMain.handle('sync:isLinked', (_event, projectId) => {
+  return { ok: true, linked: localSync.isLinked(projectId) };
 });
 
 // --- Auth (Google for identity only — everything else is our own server) ---
@@ -159,6 +279,9 @@ ipcMain.handle('server:syncProjectToLocal', async (_event, { projectId, projectN
 ipcMain.handle('auth:signIn', async () => {
   try {
     const profile = await serverAuth.login();
+    // Fire-and-forget — bringing every linked project's watcher/poller back
+    // up shouldn't hold up the sign-in response the renderer is waiting on.
+    localSync.resumeAll().catch(() => {});
     return { ok: true, profile };
   } catch (err) {
     return { ok: false, error: err.message };
@@ -166,12 +289,15 @@ ipcMain.handle('auth:signIn', async () => {
 });
 
 ipcMain.handle('auth:signOut', async () => {
+  localSync.stopAll();
   await serverAuth.logout();
   return { ok: true };
 });
 
 ipcMain.handle('auth:status', async () => {
-  return serverAuth.status();
+  const result = await serverAuth.status();
+  if (result.signedIn) localSync.resumeAll().catch(() => {});
+  return result;
 });
 
 // --- Projects / folders ---
@@ -329,7 +455,11 @@ ipcMain.handle('server:listVersions', async (_event, fileId) => {
   }
 });
 
+// Shared with local-sync.js's own pre-push checkout — see guardCheckout's
+// doc comment for why a stale local copy must never be checked out against.
 ipcMain.handle('server:checkoutFile', async (_event, fileId) => {
+  const guard = await localSync.guardCheckout(fileId);
+  if (!guard.ok) return { ok: false, error: guard.reason };
   try {
     return { ok: true, lock: await serverClient.checkoutFile(fileId) };
   } catch (err) {

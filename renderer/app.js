@@ -698,7 +698,10 @@ function renderProjectCard(p) {
       alert('Sync failed: ' + res.error);
       return;
     }
-    alert(`Synced ${res.fileCount} file${res.fileCount === 1 ? '' : 's'} to:\n${res.localPath}`);
+    const notice = res.firstSync
+      ? `\n\nThis folder now syncs continuously: local edits push up automatically (protected by check-out where this project requires it), and you'll get a badge here when there are remote changes to pull — pulling itself is always manual.`
+      : '';
+    alert(`Synced ${res.fileCount} file${res.fileCount === 1 ? '' : 's'} to:\n${res.localPath}${notice}`);
   });
   actions.appendChild(syncBtn);
 
@@ -846,6 +849,114 @@ let selectedFileId = null;
 let currentProjectId = null;
 let currentFolderId = null;
 let currentSyncMode = 'checkin';
+
+// --- Local sync status — per-project continuous sync (push automatic,
+// pull surfaced here and applied only on click). Reuses the same
+// badge/dropdown-panel shape as the upload queue above. See local-sync.js
+// in the main process for the actual engine this reflects. ---
+
+const syncStatusWrap = document.getElementById('sync-status-wrap');
+const syncStatusBtn = document.getElementById('sync-status-btn');
+const syncStatusLabel = document.getElementById('sync-status-label');
+const syncStatusBadge = document.getElementById('sync-status-badge');
+const syncStatusPanel = document.getElementById('sync-status-panel');
+const syncStatusBody = document.getElementById('sync-status-body');
+const syncUnlinkBtn = document.getElementById('sync-unlink-btn');
+
+const SYNC_STATUS_LABEL = { idle: 'Synced', syncing: 'Syncing…', blocked: 'Attention needed' };
+
+function renderSyncStatus(res) {
+  if (!res || !res.registered) {
+    syncStatusWrap.hidden = true;
+    return;
+  }
+  syncStatusWrap.hidden = false;
+  syncStatusLabel.textContent = SYNC_STATUS_LABEL[res.status] || 'Synced';
+  syncStatusBadge.hidden = res.pendingPullCount === 0;
+  syncStatusBadge.textContent = String(res.pendingPullCount);
+
+  const sections = [];
+  sections.push(`
+    <div class="sync-status-line">
+      <span class="sync-status-dot ${res.status}"></span>
+      ${SYNC_STATUS_LABEL[res.status] || 'Synced'}${res.syncMode === 'basic' ? ' · Basic mode' : ''}
+    </div>`);
+
+  if (res.syncMode === 'basic') {
+    sections.push('<div class="sync-note warn">Unprotected — no checkout in Basic mode. Whoever syncs last wins.</div>');
+  }
+
+  sections.push(`
+    <button id="sync-pull-btn" class="local-tool-btn sync-pull-btn" ${res.pendingPullCount ? '' : 'disabled'}>
+      Pull changes${res.pendingPullCount ? ` (${res.pendingPullCount})` : ''}
+    </button>`);
+
+  if (res.conflicts.length) {
+    sections.push('<div class="sync-section-label">Conflicts to resolve</div>');
+    sections.push(
+      res.conflicts
+        .map(
+          (c) => `<div class="sync-item-row">
+            <div class="sync-item-path">${escapeHtml(c.relPath)}</div>
+            <div class="sync-item-detail">See "${escapeHtml(c.conflictPath.split('/').pop())}" alongside it</div>
+          </div>`
+        )
+        .join('')
+    );
+  }
+
+  if (res.blocked.length) {
+    sections.push('<div class="sync-section-label">Waiting to push</div>');
+    sections.push(
+      res.blocked
+        .map(
+          (b) => `<div class="sync-item-row">
+            <div class="sync-item-path">${escapeHtml(b.relPath)}</div>
+            <div class="sync-item-detail">${escapeHtml(b.reason)}</div>
+          </div>`
+        )
+        .join('')
+    );
+  }
+
+  if (!res.conflicts.length && !res.blocked.length && !res.pendingPullCount) {
+    sections.push('<div class="sync-note">Nothing pending.</div>');
+  }
+
+  syncStatusBody.innerHTML = sections.join('');
+
+  const pullBtn = document.getElementById('sync-pull-btn');
+  if (pullBtn) {
+    pullBtn.addEventListener('click', async () => {
+      pullBtn.disabled = true;
+      pullBtn.textContent = 'Pulling…';
+      const pullRes = await window.api.sync.pull(currentProjectId);
+      if (!pullRes.ok) {
+        alert('Pull failed: ' + pullRes.error);
+      } else {
+        const conflictNote = pullRes.conflicts ? `, ${pullRes.conflicts} conflict${pullRes.conflicts === 1 ? '' : 's'}` : '';
+        alert(`Pulled ${pullRes.pulled} file${pullRes.pulled === 1 ? '' : 's'}${conflictNote}.`);
+      }
+      await refreshSyncStatus();
+      if (currentFolderId) await loadFolder(currentFolderId);
+    });
+  }
+}
+
+async function refreshSyncStatus() {
+  if (!hasApi || !currentProjectId) {
+    syncStatusWrap.hidden = true;
+    return;
+  }
+  const res = await window.api.sync.getStatus(currentProjectId);
+  renderSyncStatus(res);
+}
+
+let syncStatusPollTimer = null;
+function startSyncStatusPolling() {
+  if (syncStatusPollTimer) return;
+  syncStatusPollTimer = setInterval(refreshSyncStatus, 15000);
+}
 
 // Drop zone for the current folder — dropping directly on a folder row is
 // handled by that row's own listener (which stops propagation here), so
@@ -1383,6 +1494,7 @@ async function loadFolder(folderId) {
   renderTree(res.breadcrumbs);
   renderBreadcrumbs(res.breadcrumbs);
   renderFileTable(res.items);
+  refreshSyncStatus();
 }
 
 function openProject(project) {
@@ -1398,6 +1510,7 @@ function showNoProjectSelected() {
   breadcrumbsEl.innerHTML = '';
   fileTableBodyEl.innerHTML =
     '<div class="muted" style="padding:24px">Select a project from the Projects tab, or add one.</div>';
+  syncStatusWrap.hidden = true;
 }
 
 function showSignedOutBrowser() {
@@ -1406,6 +1519,7 @@ function showSignedOutBrowser() {
   treeEl.innerHTML = '';
   breadcrumbsEl.innerHTML = '';
   fileTableBodyEl.innerHTML = '<div class="muted" style="padding:24px">Sign in (top right) to browse your files.</div>';
+  syncStatusWrap.hidden = true;
 }
 
 function showDemoModeBrowser() {
@@ -1497,6 +1611,7 @@ function openSettings() {
   refreshSyncFolderPath();
   refreshSettingsTags();
   refreshSettingsServerUrl();
+  refreshUpdateStatus();
 }
 
 // --- Appearance (theme) — works with or without a server connection, so
@@ -1508,9 +1623,9 @@ document.documentElement.classList.toggle('electron-app', hasApi);
 
 const themeOptionBtns = document.querySelectorAll('.theme-option');
 const darkMediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-const EXPLICIT_THEMES = ['light', 'dark', 'dark-gray'];
+const EXPLICIT_THEMES = ['light', 'dark', 'resync'];
 
-// 'system' never resolves to the neutral-gray variant — "Gray" is an
+// 'system' never resolves to the RESYNC (teal) variant — that one's an
 // explicit-only choice, not something the OS light/dark preference maps to.
 function resolvedThemeKey() {
   const choice = document.documentElement.dataset.theme;
@@ -1542,13 +1657,18 @@ function syncViewerBackground() {
 }
 
 function applyTheme(choice) {
-  if (EXPLICIT_THEMES.includes(choice)) {
-    document.documentElement.dataset.theme = choice;
-    localStorage.setItem('resync-theme', choice);
+  const persisted = EXPLICIT_THEMES.includes(choice) ? choice : null;
+  if (persisted) {
+    document.documentElement.dataset.theme = persisted;
   } else {
     delete document.documentElement.dataset.theme;
-    localStorage.removeItem('resync-theme');
   }
+  // Persisted in the main process (userData/settings.json), not
+  // localStorage — see the note on getInitialTheme() in index.html for why.
+  // Falls back to localStorage outside Electron (plain-browser dev server).
+  if (hasApi) window.api.settings.setTheme(persisted);
+  else if (persisted) localStorage.setItem('resync-theme', persisted);
+  else localStorage.removeItem('resync-theme');
   themeOptionBtns.forEach((btn) => btn.classList.toggle('active', btn.dataset.themeChoice === choice));
   syncTitlebarOverlay();
   syncViewerBackground();
@@ -1566,6 +1686,51 @@ darkMediaQuery.addEventListener('change', () => {
   }
 });
 applyTheme(document.documentElement.dataset.theme || 'system');
+
+// --- Check for updates (GitHub Releases) ---
+
+const updateBannerEl = document.getElementById('update-banner');
+const updateBannerVersionEl = document.getElementById('update-banner-version');
+const updateBannerViewBtn = document.getElementById('update-banner-view-btn');
+const updateBannerDismissBtn = document.getElementById('update-banner-dismiss-btn');
+const settingsVersionEl = document.getElementById('settings-version');
+const settingsCheckUpdatesBtn = document.getElementById('settings-check-updates-btn');
+
+let latestReleaseUrl = null;
+
+async function refreshUpdateStatus({ manual = false } = {}) {
+  if (!hasApi) return;
+  const res = await window.api.checkForUpdates();
+  if (!res.ok) {
+    settingsVersionEl.textContent = `Version ${res.currentVersion} · Couldn't check for updates: ${res.error}`;
+    if (manual) alert('Could not check for updates: ' + res.error);
+    return;
+  }
+  latestReleaseUrl = res.releaseUrl;
+  settingsVersionEl.textContent = res.updateAvailable
+    ? `Version ${res.currentVersion} · ${res.latestVersion} available`
+    : `Version ${res.currentVersion} · Up to date`;
+
+  const alreadyDismissed = res.dismissedVersion === res.latestVersion;
+  if (res.updateAvailable && (!alreadyDismissed || manual)) {
+    updateBannerVersionEl.textContent = res.latestVersion;
+    updateBannerEl.hidden = false;
+  } else if (!res.updateAvailable) {
+    updateBannerEl.hidden = true;
+  }
+  if (manual && !res.updateAvailable) alert(`You're up to date (${res.currentVersion}).`);
+}
+
+updateBannerViewBtn.addEventListener('click', () => {
+  if (latestReleaseUrl) window.api.openExternal(latestReleaseUrl);
+});
+updateBannerDismissBtn.addEventListener('click', () => {
+  updateBannerEl.hidden = true;
+  window.api.dismissUpdate(updateBannerVersionEl.textContent);
+});
+settingsCheckUpdatesBtn.addEventListener('click', () => refreshUpdateStatus({ manual: true }));
+
+if (hasApi) refreshUpdateStatus();
 
 // --- Settings > Tags (create/delete tags for the currently open project) ---
 
@@ -2021,6 +2186,23 @@ if (hasApi) {
   document.addEventListener('click', (e) => {
     if (!uploadQueuePanel.hidden && !uploadQueueWrap.contains(e.target)) uploadQueuePanel.hidden = true;
   });
+
+  syncStatusBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    syncStatusPanel.hidden = !syncStatusPanel.hidden;
+  });
+  document.addEventListener('click', (e) => {
+    if (!syncStatusPanel.hidden && !syncStatusWrap.contains(e.target)) syncStatusPanel.hidden = true;
+  });
+  syncUnlinkBtn.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    if (!currentProjectId) return;
+    if (!confirm('Stop continuous sync for this project? Local files are left in place, but changes will no longer push or pull automatically.')) return;
+    await window.api.sync.unlink(currentProjectId);
+    syncStatusPanel.hidden = true;
+    await refreshSyncStatus();
+  });
+  startSyncStatusPolling();
 }
 
 // --- Auth (top-right avatar) — Google is identity only now, everything

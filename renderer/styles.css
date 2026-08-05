@@ -62,17 +62,18 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    /* A teal-tinted charcoal ramp — same 205 hue as the brand accent, so
-       every neutral in dark mode (bg, panels, canvas, even the window
-       titlebar) belongs to one cohesive family instead of a flat re-tint
-       of the brand's near-black ink. Enough lightness separation between
-       bg/surface/surface-2 to actually read as layered depth. */
-    --rs-bg: oklch(0.15 0.014 205);
-    --rs-surface: oklch(0.205 0.017 205);
-    --rs-surface-2: oklch(0.27 0.02 205);
-    --rs-surface-hover: oklch(0.32 0.021 205);
-    --rs-input-bg: oklch(0.24 0.018 205);
-    --rs-disabled-bg: oklch(0.19 0.015 205);
+    /* A traditional flat-gray dark mode — the default dark experience.
+       Same depth structure as the RESYNC (teal-tinted) theme below
+       (identical lightness steps), just with the hue tint stripped out of
+       the neutrals. The accent, status colors, and logo stay exactly as
+       they are in the teal theme — this is "neutral surfaces with a
+       colored accent," not a second unrelated palette. */
+    --rs-bg: oklch(0.15 0 0);
+    --rs-surface: oklch(0.205 0 0);
+    --rs-surface-2: oklch(0.27 0 0);
+    --rs-surface-hover: oklch(0.32 0 0);
+    --rs-input-bg: oklch(0.24 0 0);
+    --rs-disabled-bg: oklch(0.19 0 0);
 
     /* Softer than the light-theme borders on purpose — a bright hairline
        around every button/card reads as a harsh "outlined chip" on a dark
@@ -83,15 +84,10 @@
     --rs-border-strong: rgba(255, 255, 255, 0.11);
     --rs-border-topbar: rgba(255, 255, 255, 0.07);
 
-    /* Soft off-white rather than near-pure white — less harsh against a
-       dark ground, still plenty of contrast for headings and body text. */
-    --rs-text: oklch(0.95 0.012 205);
-    --rs-text-body: oklch(0.86 0.014 205);
-    --rs-muted: oklch(0.64 0.02 205);
+    --rs-text: oklch(0.95 0 0);
+    --rs-text-body: oklch(0.86 0 0);
+    --rs-muted: oklch(0.64 0 0);
 
-    /* Brighter, more saturated than the light-mode accent — a desaturated
-       teal reads as washed-out on a dark ground, so this leans into the
-       brand's light-cyan (#6fceed) end instead. */
     --rs-accent: oklch(0.76 0.13 205);
     --rs-accent-text: oklch(0.8 0.13 205);
     --rs-accent-border: oklch(0.76 0.13 205);
@@ -123,24 +119,26 @@
 }
 
 /* Manual override (Settings > Appearance) always wins over the OS
-   preference — a data-theme attribute set by app.js on <html>. */
+   preference — a data-theme attribute set by app.js on <html>. Neutral
+   gray is now the default/primary dark theme (what "Dark" and "System"
+   both resolve to) — see @media block above for the same palette. */
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --rs-bg: oklch(0.15 0.014 205);
-  --rs-surface: oklch(0.205 0.017 205);
-  --rs-surface-2: oklch(0.27 0.02 205);
-  --rs-surface-hover: oklch(0.32 0.021 205);
-  --rs-input-bg: oklch(0.24 0.018 205);
-  --rs-disabled-bg: oklch(0.19 0.015 205);
+  --rs-bg: oklch(0.15 0 0);
+  --rs-surface: oklch(0.205 0 0);
+  --rs-surface-2: oklch(0.27 0 0);
+  --rs-surface-hover: oklch(0.32 0 0);
+  --rs-input-bg: oklch(0.24 0 0);
+  --rs-disabled-bg: oklch(0.19 0 0);
 
   --rs-border: rgba(255, 255, 255, 0.07);
   --rs-border-soft: rgba(255, 255, 255, 0.05);
   --rs-border-strong: rgba(255, 255, 255, 0.11);
   --rs-border-topbar: rgba(255, 255, 255, 0.07);
 
-  --rs-text: oklch(0.95 0.012 205);
-  --rs-text-body: oklch(0.86 0.014 205);
-  --rs-muted: oklch(0.64 0.02 205);
+  --rs-text: oklch(0.95 0 0);
+  --rs-text-body: oklch(0.86 0 0);
+  --rs-muted: oklch(0.64 0 0);
 
   --rs-accent: oklch(0.76 0.13 205);
   --rs-accent-text: oklch(0.8 0.13 205);
@@ -171,28 +169,28 @@
   --rs-canvas-text: var(--rs-text-body);
 }
 
-/* A traditional flat-gray dark mode — same depth structure as the teal
-   dark theme above (identical lightness steps), just with the hue tint
-   stripped out of the neutrals. The accent, status colors, and logo stay
-   exactly as they are in the teal theme — this is "neutral surfaces with
-   a colored accent," not a second unrelated palette. */
-:root[data-theme="dark-gray"] {
+/* RESYNC — the original teal-tinted dark theme, now a named explicit-only
+   choice (like this block used to be for neutral gray) rather than the
+   default. Same 205 hue as the brand accent, so every neutral (bg, panels,
+   canvas, even the window titlebar) belongs to one cohesive family instead
+   of a flat re-tint of the brand's near-black ink. */
+:root[data-theme="resync"] {
   color-scheme: dark;
-  --rs-bg: oklch(0.15 0 0);
-  --rs-surface: oklch(0.205 0 0);
-  --rs-surface-2: oklch(0.27 0 0);
-  --rs-surface-hover: oklch(0.32 0 0);
-  --rs-input-bg: oklch(0.24 0 0);
-  --rs-disabled-bg: oklch(0.19 0 0);
+  --rs-bg: oklch(0.15 0.014 205);
+  --rs-surface: oklch(0.205 0.017 205);
+  --rs-surface-2: oklch(0.27 0.02 205);
+  --rs-surface-hover: oklch(0.32 0.021 205);
+  --rs-input-bg: oklch(0.24 0.018 205);
+  --rs-disabled-bg: oklch(0.19 0.015 205);
 
   --rs-border: rgba(255, 255, 255, 0.07);
   --rs-border-soft: rgba(255, 255, 255, 0.05);
   --rs-border-strong: rgba(255, 255, 255, 0.11);
   --rs-border-topbar: rgba(255, 255, 255, 0.07);
 
-  --rs-text: oklch(0.95 0 0);
-  --rs-text-body: oklch(0.86 0 0);
-  --rs-muted: oklch(0.64 0 0);
+  --rs-text: oklch(0.95 0.012 205);
+  --rs-text-body: oklch(0.86 0.014 205);
+  --rs-muted: oklch(0.64 0.02 205);
 
   --rs-accent: oklch(0.76 0.13 205);
   --rs-accent-text: oklch(0.8 0.13 205);
@@ -381,6 +379,24 @@ body { font-family: 'Geoform', sans-serif; }
 .upload-queue-row .upload-queue-status.done { color: var(--rs-success-text); }
 .upload-queue-row .upload-queue-status.error { color: var(--rs-danger); }
 
+/* Local sync status — same badge/dropdown-panel shape as the upload queue
+   above, reused for continuous-sync state instead of upload progress. */
+.sync-status-panel { width: 320px; }
+.sync-status-body { padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
+.sync-status-line { font-size: 13px; color: var(--rs-text-body); display: flex; align-items: center; gap: 6px; }
+.sync-status-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+.sync-status-dot.idle { background: var(--rs-success-text); }
+.sync-status-dot.syncing { background: var(--rs-accent); }
+.sync-status-dot.blocked { background: var(--rs-danger); }
+.sync-pull-btn { width: 100%; }
+.sync-note { font-size: 12px; color: var(--rs-muted); line-height: 1.5; }
+.sync-note.warn { color: var(--rs-danger); }
+.sync-section-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--rs-muted); margin-top: 2px; }
+.sync-item-row { display: flex; flex-direction: column; gap: 2px; padding: 6px 0; border-bottom: 1px solid var(--rs-border-soft); }
+.sync-item-row:last-child { border-bottom: none; }
+.sync-item-path { font-size: 12.5px; color: var(--rs-text-body); word-break: break-all; }
+.sync-item-detail { font-size: 11px; color: var(--rs-muted); }
+
 /* Screens */
 .screen { flex: 1; overflow: hidden; display: none; }
 .screen:not([hidden]) { display: flex; }
@@ -397,10 +413,10 @@ body { font-family: 'Geoform', sans-serif; }
   background: linear-gradient(135deg, #dbe7e9, #c3d6d9);
 }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .project-card { background: linear-gradient(135deg, oklch(0.3 0.022 205), oklch(0.205 0.017 205)); }
+  :root:not([data-theme="light"]) .project-card { background: linear-gradient(135deg, oklch(0.3 0 0), oklch(0.205 0 0)); }
 }
-:root[data-theme="dark"] .project-card { background: linear-gradient(135deg, oklch(0.3 0.022 205), oklch(0.205 0.017 205)); }
-:root[data-theme="dark-gray"] .project-card { background: linear-gradient(135deg, oklch(0.3 0 0), oklch(0.205 0 0)); }
+:root[data-theme="dark"] .project-card { background: linear-gradient(135deg, oklch(0.3 0 0), oklch(0.205 0 0)); }
+:root[data-theme="resync"] .project-card { background: linear-gradient(135deg, oklch(0.3 0.022 205), oklch(0.205 0.017 205)); }
 .project-card.add-card {
   background: var(--rs-surface-2);
   border: 1px dashed var(--rs-border-strong);
@@ -736,6 +752,21 @@ body { font-family: 'Geoform', sans-serif; }
   font-family: 'Geoform', sans-serif; font-weight: 700; font-size: 11px;
   text-transform: uppercase; letter-spacing: 0.04em; color: var(--rs-accent);
 }
+
+.update-banner {
+  flex: 0 0 auto; display: flex; align-items: center; gap: 14px;
+  padding: 10px 32px; background: var(--rs-accent-tree-bg); color: var(--rs-accent-tree-text);
+  font-size: 13px; border-bottom: 1px solid var(--rs-border-soft);
+}
+.update-banner-link {
+  background: none; border: none; color: inherit; font-weight: 700; font-size: 13px;
+  cursor: pointer; text-decoration: underline; padding: 0; font-family: inherit;
+}
+.update-banner-dismiss {
+  margin-left: auto; background: none; border: none; color: inherit; font-size: 18px;
+  line-height: 1; cursor: pointer; padding: 0 2px; opacity: 0.7;
+}
+.update-banner-dismiss:hover { opacity: 1; }
 
 /* Sign-in gate */
 .signin-card { width: 420px; display: flex; flex-direction: column; align-items: center; gap: 32px; }

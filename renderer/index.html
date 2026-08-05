@@ -8,12 +8,20 @@
   // Applied before first paint so switching screens/restarting never
   // flashes the wrong theme — 'system' (the default) sets no attribute at
   // all and lets the prefers-color-scheme media query in styles.css decide.
+  //
+  // Reads via a synchronous IPC call (see preload.js/main.js), not
+  // localStorage — the renderer loads over a fresh, randomly-assigned
+  // http://127.0.0.1:<port> origin every launch (static-server.js), so
+  // localStorage looked like it silently reset on every restart. Only
+  // present inside Electron; the plain-browser dev server (no window.api)
+  // falls back to localStorage, which is fine there since that path is
+  // dev/testing-only.
   (function () {
-    var theme = localStorage.getItem('resync-theme');
-    if (theme === 'dark' || theme === 'light' || theme === 'dark-gray') document.documentElement.dataset.theme = theme;
-    // 'system' never resolves to the neutral-gray variant — that one's an
+    var theme = (window.api && window.api.getInitialTheme) ? window.api.getInitialTheme() : localStorage.getItem('resync-theme');
+    if (theme === 'dark' || theme === 'light' || theme === 'resync') document.documentElement.dataset.theme = theme;
+    // 'system' never resolves to the RESYNC (teal) variant — that one's an
     // explicit-only choice, not something the OS preference maps to.
-    var resolved = theme === 'dark' || theme === 'light' || theme === 'dark-gray'
+    var resolved = theme === 'dark' || theme === 'light' || theme === 'resync'
       ? theme
       : (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
     // window.api exists this early too — preload runs before any page
@@ -80,6 +88,12 @@
       </div>
     </header>
 
+    <div id="update-banner" class="update-banner" hidden>
+      <span>A new version of Resync (<span id="update-banner-version"></span>) is available.</span>
+      <button id="update-banner-view-btn" class="update-banner-link">View release</button>
+      <button id="update-banner-dismiss-btn" class="update-banner-dismiss" title="Dismiss">&times;</button>
+    </div>
+
     <!-- PROJECTS SCREEN -->
     <section id="screen-projects" class="screen projects-screen">
       <div class="screen-header">
@@ -124,6 +138,19 @@
               <div id="upload-queue-panel" class="notif-panel upload-queue-panel" hidden>
                 <div class="notif-panel-header"><span>Upload queue</span></div>
                 <div id="upload-queue-list" class="notif-list"></div>
+              </div>
+            </div>
+            <div id="sync-status-wrap" class="upload-queue-wrap" hidden>
+              <button id="sync-status-btn" class="local-tool-btn upload-queue-btn">
+                <span id="sync-status-label">Synced</span>
+                <span id="sync-status-badge" class="upload-queue-badge" hidden>0</span>
+              </button>
+              <div id="sync-status-panel" class="notif-panel upload-queue-panel sync-status-panel" hidden>
+                <div class="notif-panel-header">
+                  <span>Local sync</span>
+                  <button id="sync-unlink-btn" class="notif-mark-all">Unlink&hellip;</button>
+                </div>
+                <div id="sync-status-body" class="sync-status-body"></div>
               </div>
             </div>
           </div>
@@ -272,7 +299,7 @@
         <div class="theme-switch">
           <button class="theme-option" data-theme-choice="light">Light</button>
           <button class="theme-option" data-theme-choice="dark">Dark</button>
-          <button class="theme-option" data-theme-choice="dark-gray">Gray</button>
+          <button class="theme-option" data-theme-choice="resync">RESYNC</button>
           <button class="theme-option" data-theme-choice="system">System</button>
         </div>
       </div>
@@ -282,7 +309,7 @@
         <div id="sync-folder-path" class="sync-folder-path">Not set</div>
         <button id="choose-sync-folder-btn" class="local-tool-btn">Choose folder&hellip;</button>
       </div>
-      <div class="sync-mode-section" style="border-bottom:none;padding-bottom:0;margin-bottom:0">
+      <div class="sync-mode-section">
         <div class="sync-mode-label">Tags <span id="settings-tags-hint" class="muted small">(current project)</span></div>
         <div id="settings-tags-list"></div>
         <form id="tag-new-form" class="tag-new-form">
@@ -290,6 +317,11 @@
           <input id="tag-new-color" type="color" value="#0491ad" />
           <button type="submit" class="local-tool-btn">Add</button>
         </form>
+      </div>
+      <div class="sync-mode-section" style="border-bottom:none;padding-bottom:0;margin-bottom:0">
+        <div class="sync-mode-label">Version</div>
+        <div id="settings-version" class="muted small">&mdash;</div>
+        <button id="settings-check-updates-btn" class="local-tool-btn">Check for updates</button>
       </div>
     </div>
   </div>
