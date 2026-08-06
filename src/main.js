@@ -7,6 +7,7 @@ const serverAuth = require('./server-auth');
 const serverClient = require('./server-client');
 const settingsStore = require('./settings-store');
 const sldprt = require('./sldprt');
+const sldprtColors = require('./sldprt-colors');
 const localSync = require('./local-sync');
 
 let mainWindow;
@@ -652,14 +653,30 @@ ipcMain.handle('server:removeFileTag', async (_event, { fileId, tagId }) => {
 
 // --- SolidWorks .sldprt decoding (backend-agnostic, unchanged) ---
 
+// Per-face colour is a display enhancement layered on top of an
+// already-working decode — resolving it depends on SolidWorks being
+// installed locally (see sldprt-colors.js), so a failure here should never
+// take down the base mesh preview that worked before this feature existed.
+function decodeSldprtColors(buffer, mesh) {
+  try {
+    const result = sldprtColors.vertexColorsFromSpans(buffer, mesh.spans, mesh.vertexCount);
+    return result.hasColor ? result.array : null;
+  } catch (err) {
+    console.error('SLDPRT colour extraction failed:', err);
+    return null;
+  }
+}
+
 ipcMain.handle('sldprt:decodeBuffer', async (_event, data) => {
   try {
-    const mesh = sldprt.loadMeshFromBuffer(Buffer.from(data));
+    const buffer = Buffer.from(data);
+    const mesh = sldprt.loadMeshFromBuffer(buffer);
     return {
       ok: true,
       positions: mesh.positions,
       normals: mesh.normals,
       indices: mesh.indices,
+      colors: decodeSldprtColors(buffer, mesh),
       vertexCount: mesh.vertexCount,
       triangleCount: mesh.triangleCount,
     };

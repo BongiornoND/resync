@@ -213,7 +213,11 @@ export function createViewer({ container, treeContainer, messageEl }) {
 
   // For meshes already decoded elsewhere (e.g. the SLDPRT tessellation
   // decoder) — just positions/normals/indices, no parsing needed here.
-  function loadMesh({ positions, normals, indices }, fileName) {
+  // `colors` is an optional per-vertex RGB Float32Array (SLDPRT per-face
+  // appearance colour, expanded to one colour per vertex so the whole part
+  // paints in a single draw call) — absent for formats/files with no
+  // colour data, which renders exactly as before this existed.
+  function loadMesh({ positions, normals, indices, colors }, fileName) {
     clear();
 
     const geometry = new THREE.BufferGeometry();
@@ -221,7 +225,15 @@ export function createViewer({ container, treeContainer, messageEl }) {
     geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
     geometry.setIndex(new THREE.BufferAttribute(indices, 1));
 
-    const mesh = new THREE.Mesh(geometry, defaultMaterial());
+    let material;
+    if (colors && colors.length) {
+      geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+      material = new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.1, roughness: 0.75, side: THREE.DoubleSide });
+    } else {
+      material = defaultMaterial();
+    }
+
+    const mesh = new THREE.Mesh(geometry, material);
     mesh.name = fileName;
 
     const root = new THREE.Group();

@@ -42,6 +42,10 @@ function decodeTess(blob) {
   const verts = [];
   const norms = [];
   const tris = [];
+  const spans = []; // [vertexStart, vertexCount, blobOffset] per face — lets
+  // callers (see sldprt-colors.js) attach per-face data like appearances,
+  // since an appearance record sits inside the byte range of the face it
+  // applies to.
   const used = new Set();
   let pos = 0;
   let faces = 0;
@@ -107,6 +111,7 @@ function decodeTess(blob) {
     // face. Walk each strip with standard alternating winding, flipping
     // when the geometric normal opposes the stored vertex normal.
     const base = verts.length;
+    spans.push([base, cnt, i]);
     for (const v of V) verts.push(v);
     for (const nv of Nm) norms.push(nv);
 
@@ -141,7 +146,7 @@ function decodeTess(blob) {
     faces += 1;
   }
 
-  return { verts, norms, tris, faces };
+  return { verts, norms, tris, faces, spans };
 }
 
 function decodeBuffer(raw) {
@@ -167,7 +172,7 @@ function load(filePath) {
 
 // Flattens a decoded mesh into typed arrays ready for a three.js
 // BufferGeometry (position/normal attributes + a triangle index buffer).
-function flattenMesh({ verts, norms, tris, faces }) {
+function flattenMesh({ verts, norms, tris, faces, spans }) {
   const positions = new Float32Array(verts.length * 3);
   const normals = new Float32Array(norms.length * 3);
   for (let i = 0; i < verts.length; i++) {
@@ -191,6 +196,7 @@ function flattenMesh({ verts, norms, tris, faces }) {
     positions,
     normals,
     indices,
+    spans,
     vertexCount: verts.length,
     triangleCount: tris.length,
     faceCount: faces,
@@ -205,4 +211,4 @@ function loadMeshFromBuffer(buffer) {
   return flattenMesh(decodeBuffer(buffer));
 }
 
-module.exports = { findBlobs, decodeTess, decodeBuffer, load, loadMesh, loadMeshFromBuffer };
+module.exports = { HDR, findBlobs, decodeTess, decodeBuffer, load, loadMesh, loadMeshFromBuffer };
