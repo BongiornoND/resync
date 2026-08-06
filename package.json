@@ -1,6 +1,6 @@
 {
   "name": "resync",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "private": true,
   "description": "Resync desktop client — CAD file sync with a self-hosted server backend, STEP/SolidWorks 3D preview, and version history.",
   "main": "src/main.js",
