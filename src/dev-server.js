@@ -4,5 +4,5 @@ const path = require('path');
 const { createStaticServer } = require('./static-server');
 
 createStaticServer(path.join(__dirname, '..')).then(({ port }) => {
-  console.log(`cad-sync dev server running at http://127.0.0.1:${port}/`);
+  console.log(`resync dev server running at http://127.0.0.1:${port}/`);
 });

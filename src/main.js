@@ -137,7 +137,7 @@ function isNewerVersion(latest, current) {
 ipcMain.handle('app:checkForUpdates', async () => {
   const currentVersion = app.getVersion();
   try {
-    const release = await githubApiGet('/repos/BongiornoND/cad-sync/releases/latest');
+    const release = await githubApiGet('/repos/BongiornoND/resync/releases/latest');
     const latestVersion = release.tag_name;
     return {
       ok: true,
