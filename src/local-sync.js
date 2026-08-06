@@ -395,7 +395,11 @@ async function startSync({ projectId, projectName, rootFolderId, localDir, syncM
 
   entry.watcher = chokidar.watch(localDir, {
     ignoreInitial: false,
-    ignored: /(^|[/\\])\../, // dotfiles
+    // dotfiles, plus Office/SolidWorks-style lock files ("~$Part1.SLDPRT")
+    // left behind next to a file that's open (or wasn't closed cleanly) —
+    // real content never lives in one, so they'd otherwise get pushed to
+    // the server as junk the moment a linked folder is first scanned.
+    ignored: /(^|[/\\])(\.|~\$)/,
     awaitWriteFinish: { stabilityThreshold: WRITE_STABILITY_MS, pollInterval: Math.min(200, WRITE_STABILITY_MS) },
   });
   const onFsEvent = (absPath) => {

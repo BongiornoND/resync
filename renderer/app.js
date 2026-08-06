@@ -1391,10 +1391,16 @@ async function deleteItem(file) {
   await loadFolder(currentFolderId);
 }
 
+// Office/SolidWorks-style lock file left next to whatever's currently open
+// ("~$Part1.SLDPRT") — never real content, so it shouldn't get uploaded if
+// it's swept up in a drag of a whole folder's contents.
+const LOCK_FILE_RE = /^~\$/;
+
 function handleExternalFileDrop(fileList, targetFolderId) {
   const filePaths = Array.from(fileList)
     .map((file) => window.api.getPathForFile(file))
-    .filter(Boolean);
+    .filter(Boolean)
+    .filter((p) => !LOCK_FILE_RE.test(p.split(/[\\/]/).pop()));
   if (filePaths.length) enqueueUploads(targetFolderId, filePaths);
 }
 
