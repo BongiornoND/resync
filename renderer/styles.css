@@ -506,6 +506,13 @@ body { font-family: 'Geoform', sans-serif; }
   display: grid; grid-template-columns: minmax(220px, 1fr) 70px 80px 110px 60px;
   align-items: center; column-gap: 12px; padding: 11px 24px;
   border-bottom: 1px solid var(--rs-border-soft); cursor: pointer;
+  /* Without this, starting a drag with the cursor on the filename text
+     (the natural place to grab a row) can make Chromium begin a native
+     text-selection drag instead of firing this row's dragstart handler —
+     silently, no error, the drop just never happens. Longer/distinctive
+     names get grabbed more precisely, so this reads as file-specific even
+     though it's really about where the cursor lands on any row. */
+  user-select: none;
 }
 .file-row:hover { background: var(--rs-surface-2); }
 .file-row.selected { background: var(--rs-accent-selected-bg); }
