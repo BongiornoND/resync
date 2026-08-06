@@ -358,7 +358,7 @@ body { font-family: 'Geoform', sans-serif; }
    while a batch works through one at a time in the background, instead of
    the toolbar button locking up (and giving zero feedback) for the whole
    batch's duration. */
-.upload-queue-wrap { position: relative; }
+.upload-queue-wrap { position: relative; display: flex; align-items: center; gap: 8px; }
 .upload-queue-btn { white-space: nowrap; }
 .upload-queue-badge {
   display: inline-flex; align-items: center; justify-content: center;
@@ -388,7 +388,14 @@ body { font-family: 'Geoform', sans-serif; }
 .sync-status-dot.idle { background: var(--rs-success-text); }
 .sync-status-dot.syncing { background: var(--rs-accent); }
 .sync-status-dot.blocked { background: var(--rs-danger); }
-.sync-pull-btn { width: 100%; }
+/* Always visible, even with nothing pending (just disabled) — the point is
+   you never have to open the panel below to know whether there's anything
+   to pull. Filled in accent when there's something waiting so it actually
+   draws the eye instead of blending into the rest of the toolbar. */
+.sync-pull-btn:not(:disabled) {
+  background: var(--rs-accent); border-color: var(--rs-accent); color: #ffffff;
+}
+.sync-pull-btn:not(:disabled):hover { background: var(--rs-accent-text); border-color: var(--rs-accent-text); }
 .sync-note { font-size: 12px; color: var(--rs-muted); line-height: 1.5; }
 .sync-note.warn { color: var(--rs-danger); }
 .sync-section-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--rs-muted); margin-top: 2px; }

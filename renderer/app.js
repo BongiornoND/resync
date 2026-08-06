@@ -856,6 +856,7 @@ let currentSyncMode = 'checkin';
 // in the main process for the actual engine this reflects. ---
 
 const syncStatusWrap = document.getElementById('sync-status-wrap');
+const syncPullBtn = document.getElementById('sync-pull-btn');
 const syncStatusBtn = document.getElementById('sync-status-btn');
 const syncStatusLabel = document.getElementById('sync-status-label');
 const syncStatusBadge = document.getElementById('sync-status-badge');
@@ -875,6 +876,15 @@ function renderSyncStatus(res) {
   syncStatusBadge.hidden = res.pendingPullCount === 0;
   syncStatusBadge.textContent = String(res.pendingPullCount);
 
+  // Always visible (not tucked inside the collapsed panel below) so a
+  // pending pull is never something you have to think to go looking for —
+  // just disabled with nothing to pull. Only re-armed when idle; mid-pull
+  // it's left alone so a second click can't fire while one is in flight.
+  if (!syncPullBtn.classList.contains('pulling')) {
+    syncPullBtn.disabled = !res.pendingPullCount;
+    syncPullBtn.textContent = res.pendingPullCount ? `Pull changes (${res.pendingPullCount})` : 'Pull changes';
+  }
+
   const sections = [];
   sections.push(`
     <div class="sync-status-line">
@@ -885,11 +895,6 @@ function renderSyncStatus(res) {
   if (res.syncMode === 'basic') {
     sections.push('<div class="sync-note warn">Unprotected — no checkout in Basic mode. Whoever syncs last wins.</div>');
   }
-
-  sections.push(`
-    <button id="sync-pull-btn" class="local-tool-btn sync-pull-btn" ${res.pendingPullCount ? '' : 'disabled'}>
-      Pull changes${res.pendingPullCount ? ` (${res.pendingPullCount})` : ''}
-    </button>`);
 
   if (res.conflicts.length) {
     sections.push('<div class="sync-section-label">Conflicts to resolve</div>');
@@ -924,24 +929,27 @@ function renderSyncStatus(res) {
   }
 
   syncStatusBody.innerHTML = sections.join('');
-
-  const pullBtn = document.getElementById('sync-pull-btn');
-  if (pullBtn) {
-    pullBtn.addEventListener('click', async () => {
-      pullBtn.disabled = true;
-      pullBtn.textContent = 'Pulling…';
-      const pullRes = await window.api.sync.pull(currentProjectId);
-      if (!pullRes.ok) {
-        alert('Pull failed: ' + pullRes.error);
-      } else {
-        const conflictNote = pullRes.conflicts ? `, ${pullRes.conflicts} conflict${pullRes.conflicts === 1 ? '' : 's'}` : '';
-        alert(`Pulled ${pullRes.pulled} file${pullRes.pulled === 1 ? '' : 's'}${conflictNote}.`);
-      }
-      await refreshSyncStatus();
-      if (currentFolderId) await loadFolder(currentFolderId);
-    });
-  }
 }
+
+syncPullBtn.addEventListener('click', async () => {
+  if (!currentProjectId) return;
+  syncPullBtn.classList.add('pulling');
+  syncPullBtn.disabled = true;
+  syncPullBtn.textContent = 'Pulling…';
+  try {
+    const pullRes = await window.api.sync.pull(currentProjectId);
+    if (!pullRes.ok) {
+      alert('Pull failed: ' + pullRes.error);
+    } else {
+      const conflictNote = pullRes.conflicts ? `, ${pullRes.conflicts} conflict${pullRes.conflicts === 1 ? '' : 's'}` : '';
+      alert(`Pulled ${pullRes.pulled} file${pullRes.pulled === 1 ? '' : 's'}${conflictNote}.`);
+    }
+  } finally {
+    syncPullBtn.classList.remove('pulling');
+  }
+  await refreshSyncStatus();
+  if (currentFolderId) await loadFolder(currentFolderId);
+});
 
 async function refreshSyncStatus() {
   if (!hasApi || !currentProjectId) {
