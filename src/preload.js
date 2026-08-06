@@ -11,6 +11,9 @@ contextBridge.exposeInMainWorld('api', {
   checkForUpdates: () => ipcRenderer.invoke('app:checkForUpdates'),
   dismissUpdate: (version) => ipcRenderer.invoke('app:dismissUpdate', version),
   openExternal: (url) => ipcRenderer.invoke('app:openExternal', url),
+  performUpdate: () => ipcRenderer.invoke('app:performUpdate'),
+  onUpdateProgress: (callback) => ipcRenderer.on('app:updateProgress', (_event, data) => callback(data)),
+  confirmQuitForUpdate: () => ipcRenderer.send('app:confirmQuitForUpdate'),
   settings: {
     getServerUrl: () => ipcRenderer.invoke('settings:getServerUrl'),
     setServerUrl: (serverUrl) => ipcRenderer.invoke('settings:setServerUrl', serverUrl),

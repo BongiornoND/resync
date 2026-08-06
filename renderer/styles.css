@@ -772,10 +772,12 @@ body { font-family: 'Geoform', sans-serif; }
   padding: 10px 32px; background: var(--rs-accent-tree-bg); color: var(--rs-accent-tree-text);
   font-size: 13px; border-bottom: 1px solid var(--rs-border-soft);
 }
+.update-banner-actions { display: flex; align-items: center; gap: 14px; }
 .update-banner-link {
   background: none; border: none; color: inherit; font-weight: 700; font-size: 13px;
   cursor: pointer; text-decoration: underline; padding: 0; font-family: inherit;
 }
+.update-banner-link:disabled { opacity: 0.6; cursor: default; text-decoration: none; }
 .update-banner-dismiss {
   margin-left: auto; background: none; border: none; color: inherit; font-size: 18px;
   line-height: 1; cursor: pointer; padding: 0 2px; opacity: 0.7;
@@ -841,6 +843,7 @@ body { font-family: 'Geoform', sans-serif; }
   border-bottom: 1px solid var(--rs-border); margin-bottom: 2px;
 }
 .sync-mode-label { font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--rs-muted); }
+.settings-version-actions { display: flex; gap: 8px; }
 #sync-mode-select {
   font-size: 13px; padding: 9px 10px; border: 1px solid var(--rs-border-strong); border-radius: 6px;
   font-family: inherit; background: var(--rs-input-bg); color: var(--rs-text-body); width: 100%;

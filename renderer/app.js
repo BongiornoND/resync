@@ -1704,16 +1704,22 @@ applyTheme(document.documentElement.dataset.theme || 'system');
 // --- Check for updates (GitHub Releases) ---
 
 const updateBannerEl = document.getElementById('update-banner');
+const updateBannerTextEl = document.getElementById('update-banner-text');
 const updateBannerVersionEl = document.getElementById('update-banner-version');
+const updateBannerActionsEl = document.getElementById('update-banner-actions');
+const updateBannerUpdateBtn = document.getElementById('update-banner-update-btn');
 const updateBannerViewBtn = document.getElementById('update-banner-view-btn');
 const updateBannerDismissBtn = document.getElementById('update-banner-dismiss-btn');
 const settingsVersionEl = document.getElementById('settings-version');
 const settingsCheckUpdatesBtn = document.getElementById('settings-check-updates-btn');
+const settingsUpdateBtn = document.getElementById('settings-update-btn');
 
 let latestReleaseUrl = null;
+let latestReleaseVersion = null;
+let updating = false;
 
 async function refreshUpdateStatus({ manual = false } = {}) {
-  if (!hasApi) return;
+  if (!hasApi || updating) return;
   const res = await window.api.checkForUpdates();
   if (!res.ok) {
     settingsVersionEl.textContent = `Version ${res.currentVersion} · Couldn't check for updates: ${res.error}`;
@@ -1721,9 +1727,11 @@ async function refreshUpdateStatus({ manual = false } = {}) {
     return;
   }
   latestReleaseUrl = res.releaseUrl;
+  latestReleaseVersion = res.latestVersion;
   settingsVersionEl.textContent = res.updateAvailable
     ? `Version ${res.currentVersion} · ${res.latestVersion} available`
     : `Version ${res.currentVersion} · Up to date`;
+  settingsUpdateBtn.hidden = !res.updateAvailable;
 
   const alreadyDismissed = res.dismissedVersion === res.latestVersion;
   if (res.updateAvailable && (!alreadyDismissed || manual)) {
@@ -1735,6 +1743,53 @@ async function refreshUpdateStatus({ manual = false } = {}) {
   if (manual && !res.updateAvailable) alert(`You're up to date (${res.currentVersion}).`);
 }
 
+// Shared by the banner's "Update now" and Settings' "Update now" — download
+// the release with live progress, hand off to the detached swap-and-relaunch
+// script (see main.js), then quit once the user's actually seen it happen
+// rather than the process disappearing out from under an in-flight action.
+async function startUpdate() {
+  if (updating || !latestReleaseVersion) return;
+  updating = true;
+
+  updateBannerActionsEl.hidden = true;
+  updateBannerDismissBtn.hidden = true;
+  updateBannerEl.hidden = false;
+  settingsUpdateBtn.disabled = true;
+  settingsCheckUpdatesBtn.disabled = true;
+
+  const setProgressText = (text) => {
+    updateBannerTextEl.textContent = text;
+    settingsVersionEl.textContent = text;
+  };
+  setProgressText(`Downloading Resync ${latestReleaseVersion}… 0%`);
+
+  const res = await window.api.performUpdate();
+  if (!res.ok) {
+    alert('Update failed: ' + res.error);
+    updating = false;
+    updateBannerActionsEl.hidden = false;
+    updateBannerDismissBtn.hidden = false;
+    settingsUpdateBtn.disabled = false;
+    settingsCheckUpdatesBtn.disabled = false;
+    return;
+  }
+
+  setProgressText(`Restarting to finish updating to ${res.version}…`);
+  setTimeout(() => window.api.confirmQuitForUpdate(), 900);
+}
+
+if (hasApi) {
+  window.api.onUpdateProgress(({ fraction, label }) => {
+    if (!updating) return;
+    const pct = Math.round(Math.min(1, Math.max(0, fraction)) * 100);
+    const text = `${label} ${pct}%`;
+    updateBannerTextEl.textContent = text;
+    settingsVersionEl.textContent = text;
+  });
+}
+
+updateBannerUpdateBtn.addEventListener('click', startUpdate);
+settingsUpdateBtn.addEventListener('click', startUpdate);
 updateBannerViewBtn.addEventListener('click', () => {
   if (latestReleaseUrl) window.api.openExternal(latestReleaseUrl);
 });

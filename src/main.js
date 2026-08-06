@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const https = require('https');
+const { spawn } = require('child_process');
 const { createStaticServer } = require('./static-server');
 const serverAuth = require('./server-auth');
 const serverClient = require('./server-client');
@@ -166,6 +167,117 @@ ipcMain.handle('app:openExternal', async (_event, url) => {
   if (typeof url === 'string' && url.startsWith('https://github.com/')) {
     await shell.openExternal(url);
   }
+});
+
+// --- Self-update: download the latest release and swap it in ---
+//
+// The running process holds an OS-level lock on its own exe and DLLs (we
+// hit this ourselves as a plain EBUSY error while repackaging with the app
+// open), so this process can never overwrite its own files. The standard
+// pattern applies: download the new build, hand off to a small detached
+// helper script that waits for this process to actually exit, does the
+// file swap, relaunches the new exe, then quit. PowerShell's built-in
+// Expand-Archive/Copy-Item cover the swap with no new dependency.
+
+let updateInProgress = false;
+
+function downloadUpdateZip(url, destPath, totalSize) {
+  return new Promise((resolve, reject) => {
+    const file = fs.createWriteStream(destPath);
+    let downloaded = 0;
+
+    function get(u) {
+      const req = https.get(u, { headers: { 'User-Agent': 'resync-client' } }, (res) => {
+        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          get(res.headers.location);
+          return;
+        }
+        if (res.statusCode !== 200) {
+          reject(new Error(`Download failed with status ${res.statusCode}`));
+          return;
+        }
+        res.on('data', (chunk) => {
+          downloaded += chunk.length;
+          if (mainWindow) {
+            mainWindow.webContents.send('app:updateProgress', {
+              fraction: totalSize ? downloaded / totalSize : 0,
+              label: 'Downloading update…',
+            });
+          }
+        });
+        res.pipe(file);
+        file.on('finish', () => file.close(() => resolve()));
+      });
+      req.on('error', reject);
+    }
+
+    get(url);
+  });
+}
+
+// Single-quoted throughout — every path here comes from app.getPath()/
+// process.execPath, never user input, but single-quoting is still the
+// right default for embedding arbitrary paths in a PowerShell string.
+function buildUpdateScript({ pid, zipPath, extractDir, installDir, exeName }) {
+  const exePath = path.join(installDir, exeName);
+  return [
+    `Wait-Process -Id ${pid} -Timeout 30 -ErrorAction SilentlyContinue`,
+    'Start-Sleep -Milliseconds 500',
+    `Expand-Archive -Path '${zipPath}' -DestinationPath '${extractDir}' -Force`,
+    `Copy-Item -Path '${extractDir}\\*' -Destination '${installDir}' -Recurse -Force`,
+    `Remove-Item -Path '${zipPath}' -Force -ErrorAction SilentlyContinue`,
+    `Remove-Item -Path '${extractDir}' -Recurse -Force -ErrorAction SilentlyContinue`,
+    `Start-Process -FilePath '${exePath}'`,
+    'Remove-Item -Path $MyInvocation.MyCommand.Path -Force -ErrorAction SilentlyContinue',
+  ].join('\r\n');
+}
+
+ipcMain.handle('app:performUpdate', async () => {
+  if (!app.isPackaged) return { ok: false, error: 'Self-update only works in a packaged build, not in dev mode.' };
+  if (updateInProgress) return { ok: false, error: 'An update is already in progress.' };
+
+  const exeName = path.basename(process.execPath);
+  if (exeName.toLowerCase() !== 'resync.exe') {
+    return { ok: false, error: `Unexpected executable name (${exeName}) — refusing to self-update.` };
+  }
+
+  updateInProgress = true;
+  try {
+    const release = await githubApiGet('/repos/BongiornoND/resync/releases/latest');
+    const asset = (release.assets || []).find((a) => a.name.endsWith('.zip'));
+    if (!asset) throw new Error('Latest release has no .zip asset attached');
+
+    const installDir = path.dirname(process.execPath);
+    const stamp = Date.now();
+    const tmpDir = app.getPath('temp');
+    const zipPath = path.join(tmpDir, `resync-update-${stamp}.zip`);
+    const extractDir = path.join(tmpDir, `resync-update-extract-${stamp}`);
+    const scriptPath = path.join(tmpDir, `resync-update-${stamp}.ps1`);
+
+    await downloadUpdateZip(asset.browser_download_url, zipPath, asset.size);
+
+    fs.writeFileSync(scriptPath, buildUpdateScript({ pid: process.pid, zipPath, extractDir, installDir, exeName }), 'utf8');
+
+    // Detached so it survives this process quitting — that's the whole
+    // point, it's waiting specifically for that to happen.
+    const helper = spawn('powershell', ['-NoProfile', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-File', scriptPath], {
+      detached: true,
+      stdio: 'ignore',
+    });
+    helper.unref();
+
+    return { ok: true, version: release.tag_name };
+  } catch (err) {
+    updateInProgress = false;
+    return { ok: false, error: err.message };
+  }
+});
+
+// Separate from performUpdate's own promise so the renderer can render the
+// "restarting…" state and let the user actually see it before the process
+// disappears, rather than quitting out from under an in-flight IPC reply.
+ipcMain.on('app:confirmQuitForUpdate', () => {
+  app.quit();
 });
 
 // --- Server connection settings ---

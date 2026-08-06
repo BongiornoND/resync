@@ -89,8 +89,11 @@
     </header>
 
     <div id="update-banner" class="update-banner" hidden>
-      <span>A new version of Resync (<span id="update-banner-version"></span>) is available.</span>
-      <button id="update-banner-view-btn" class="update-banner-link">View release</button>
+      <span id="update-banner-text">A new version of Resync (<span id="update-banner-version"></span>) is available.</span>
+      <span id="update-banner-actions" class="update-banner-actions">
+        <button id="update-banner-update-btn" class="update-banner-link">Update now</button>
+        <button id="update-banner-view-btn" class="update-banner-link">Release notes</button>
+      </span>
       <button id="update-banner-dismiss-btn" class="update-banner-dismiss" title="Dismiss">&times;</button>
     </div>
 
@@ -322,7 +325,10 @@
       <div class="sync-mode-section" style="border-bottom:none;padding-bottom:0;margin-bottom:0">
         <div class="sync-mode-label">Version</div>
         <div id="settings-version" class="muted small">&mdash;</div>
-        <button id="settings-check-updates-btn" class="local-tool-btn">Check for updates</button>
+        <div class="settings-version-actions">
+          <button id="settings-check-updates-btn" class="local-tool-btn">Check for updates</button>
+          <button id="settings-update-btn" class="local-tool-btn" hidden>Update now</button>
+        </div>
       </div>
     </div>
   </div>
