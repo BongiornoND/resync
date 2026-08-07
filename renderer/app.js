@@ -1165,7 +1165,7 @@ function renderFileDetails(file) {
     </div>
     ${
       file.id && hasApi
-        ? `<button id="open-file-btn" class="local-tool-btn">Open in default app</button>`
+        ? `<button id="open-file-btn" class="local-tool-btn" data-open-label="Open in default app">Open in default app</button>`
         : ''
     }
     ${
@@ -1207,8 +1207,21 @@ function renderFileDetails(file) {
       openFileBtn.textContent = 'Opening…';
       const res = await window.api.server.openFileInDefaultApp(file.id, file.latestVersionId, file.name);
       openFileBtn.disabled = false;
-      openFileBtn.textContent = 'Open in default app';
+      openFileBtn.textContent = openFileBtn.dataset.openLabel;
       if (!res.ok) alert('Could not open file: ' + res.error);
+    });
+
+    // Upgrades the label to "Open in <App>" once the OS's registered
+    // handler is resolved — deliberately async and non-blocking (the
+    // registry/version-info lookup takes a moment) rather than delaying
+    // the rest of the panel. Guarded against the user having already
+    // selected a different file by the time this resolves.
+    window.api.server.getDefaultAppName(file.name).then((res) => {
+      if (!res.ok || !res.appName) return;
+      if (selectedFileId !== file.id || document.getElementById('open-file-btn') !== openFileBtn) return;
+      const label = `Open in ${res.appName}`;
+      openFileBtn.dataset.openLabel = label;
+      openFileBtn.textContent = label;
     });
   }
 

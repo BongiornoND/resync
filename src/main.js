@@ -2,7 +2,7 @@ const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const https = require('https');
-const { spawn } = require('child_process');
+const { spawn, execFile } = require('child_process');
 const { createStaticServer } = require('./static-server');
 const serverAuth = require('./server-auth');
 const serverClient = require('./server-client');
@@ -699,6 +699,99 @@ ipcMain.handle('server:downloadVersion', async (_event, versionId) => {
   try {
     const buffer = await serverClient.downloadVersion(versionId);
     return { ok: true, data: new Uint8Array(buffer) };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
+// --- Default app name lookup (for the "Open in <App>" button label) —
+// Windows has no simple API for this, only the registry: resolve the
+// extension's ProgId (the user's own file-type choice first, falling back
+// to the system default), find its "open" command, and read the target
+// exe's FileDescription — the same friendly name Explorer's own "Open
+// with" menu shows. Cached per extension since the association can't
+// change during the app's lifetime. ---
+
+const defaultAppNameCache = new Map();
+
+function extensionOf(fileName) {
+  const m = String(fileName || '').match(/\.[a-z0-9]+$/i);
+  return m ? m[0].toLowerCase() : '';
+}
+
+// Written to a real .ps1 file rather than passed as a -Command string —
+// the registry paths here need their own backslashes and quotes, and
+// juggling that through JS string-escaping on top of shell-argument
+// escaping is exactly the kind of thing that silently breaks. $ext is the
+// only interpolated value, and it's always something extensionOf() already
+// validated as .[a-z0-9]+, so no further escaping risk there.
+function buildAppNameScript(ext) {
+  return [
+    'function Resolve-ProgId($ext) {',
+    '  $p = $null',
+    '  try { $p = (Get-ItemProperty "HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FileExts\\$ext\\UserChoice" -ErrorAction Stop).ProgId } catch {}',
+    '  if ($p) { return $p }',
+    '  try { $p = (Get-Item "Registry::HKEY_CLASSES_ROOT\\$ext" -ErrorAction Stop).GetValue(\'\') } catch {}',
+    '  return $p',
+    '}',
+    `$progId = Resolve-ProgId '${ext}'`,
+    'if (-not $progId) { exit }',
+    '',
+    '$cmd = $null',
+    "foreach ($verb in @('open','Open')) {",
+    '  try {',
+    '    $v = (Get-Item "Registry::HKEY_CLASSES_ROOT\\$progId\\shell\\$verb\\command" -ErrorAction Stop).GetValue(\'\')',
+    '    if ($v) { $cmd = $v; break }',
+    '  } catch {}',
+    '}',
+    '',
+    '$name = $null',
+    'if ($cmd) {',
+    '  if ($cmd -match \'^"([^"]+)"\') { $exePath = $matches[1] } else { $exePath = ($cmd -split \' \')[0] }',
+    '  if (Test-Path -LiteralPath $exePath -ErrorAction SilentlyContinue) {',
+    '    $vi = (Get-Item -LiteralPath $exePath).VersionInfo',
+    '    if ($vi.FileDescription) { $name = $vi.FileDescription }',
+    '    elseif ($vi.ProductName) { $name = $vi.ProductName }',
+    '  }',
+    '}',
+    'if (-not $name) {',
+    '  try { $name = (Get-Item "Registry::HKEY_CLASSES_ROOT\\$progId" -ErrorAction Stop).GetValue(\'\') } catch {}',
+    '}',
+    'if (-not $name) { $name = $progId }',
+    'Write-Output $name',
+  ].join('\r\n');
+}
+
+function resolveDefaultAppName(ext) {
+  return new Promise((resolve) => {
+    if (!ext) {
+      resolve(null);
+      return;
+    }
+    if (defaultAppNameCache.has(ext)) {
+      resolve(defaultAppNameCache.get(ext));
+      return;
+    }
+    const scriptPath = path.join(app.getPath('temp'), `resync-appname-${Date.now()}-${Math.random().toString(36).slice(2)}.ps1`);
+    fs.writeFileSync(scriptPath, buildAppNameScript(ext), 'utf8');
+    execFile(
+      'powershell',
+      ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', scriptPath],
+      { timeout: 5000 },
+      (err, stdout) => {
+        fs.rm(scriptPath, { force: true }, () => {});
+        const name = !err && stdout && stdout.trim() ? stdout.trim() : null;
+        defaultAppNameCache.set(ext, name);
+        resolve(name);
+      }
+    );
+  });
+}
+
+ipcMain.handle('server:getDefaultAppName', async (_event, fileName) => {
+  try {
+    const appName = await resolveDefaultAppName(extensionOf(fileName));
+    return { ok: true, appName };
   } catch (err) {
     return { ok: false, error: err.message };
   }
