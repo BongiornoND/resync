@@ -856,6 +856,7 @@ let currentSyncMode = 'checkin';
 // in the main process for the actual engine this reflects. ---
 
 const syncStatusWrap = document.getElementById('sync-status-wrap');
+const syncPushBtn = document.getElementById('sync-push-btn');
 const syncPullBtn = document.getElementById('sync-pull-btn');
 const syncStatusBtn = document.getElementById('sync-status-btn');
 const syncStatusLabel = document.getElementById('sync-status-label');
@@ -885,6 +886,15 @@ function renderSyncStatus(res) {
     syncPullBtn.textContent = res.pendingPullCount ? `Pull changes (${res.pendingPullCount})` : 'Pull changes';
   }
 
+  // Only Basic-mode projects push manually — advisory/check-in still push
+  // the instant a change is detected, protected by checkout, so there's
+  // nothing for this button to do there.
+  syncPushBtn.hidden = res.syncMode !== 'basic';
+  if (res.syncMode === 'basic' && !syncPushBtn.classList.contains('pushing')) {
+    syncPushBtn.disabled = !res.pendingPushCount;
+    syncPushBtn.textContent = res.pendingPushCount ? `Push changes (${res.pendingPushCount})` : 'Push changes';
+  }
+
   const sections = [];
   sections.push(`
     <div class="sync-status-line">
@@ -893,7 +903,9 @@ function renderSyncStatus(res) {
     </div>`);
 
   if (res.syncMode === 'basic') {
-    sections.push('<div class="sync-note warn">Unprotected — no checkout in Basic mode. Whoever syncs last wins.</div>');
+    sections.push(
+      '<div class="sync-note warn">Unprotected — no checkout in Basic mode. Local changes wait for "Push changes"; whoever syncs last wins.</div>'
+    );
   }
 
   if (res.conflicts.length) {
@@ -924,7 +936,7 @@ function renderSyncStatus(res) {
     );
   }
 
-  if (!res.conflicts.length && !res.blocked.length && !res.pendingPullCount) {
+  if (!res.conflicts.length && !res.blocked.length && !res.pendingPullCount && !res.pendingPushCount) {
     sections.push('<div class="sync-note">Nothing pending.</div>');
   }
 
@@ -942,10 +954,35 @@ syncPullBtn.addEventListener('click', async () => {
       alert('Pull failed: ' + pullRes.error);
     } else {
       const conflictNote = pullRes.conflicts ? `, ${pullRes.conflicts} conflict${pullRes.conflicts === 1 ? '' : 's'}` : '';
-      alert(`Pulled ${pullRes.pulled} file${pullRes.pulled === 1 ? '' : 's'}${conflictNote}.`);
+      const skippedNote = pullRes.skipped
+        ? `, ${pullRes.skipped} skipped (push ${pullRes.skipped === 1 ? 'it' : 'them'} first)`
+        : '';
+      alert(`Pulled ${pullRes.pulled} file${pullRes.pulled === 1 ? '' : 's'}${conflictNote}${skippedNote}.`);
     }
   } finally {
     syncPullBtn.classList.remove('pulling');
+  }
+  await refreshSyncStatus();
+  if (currentFolderId) await loadFolder(currentFolderId);
+});
+
+syncPushBtn.addEventListener('click', async () => {
+  if (!currentProjectId) return;
+  syncPushBtn.classList.add('pushing');
+  syncPushBtn.disabled = true;
+  syncPushBtn.textContent = 'Pushing…';
+  try {
+    const pushRes = await window.api.sync.push(currentProjectId);
+    if (!pushRes.ok) {
+      alert('Push failed: ' + pushRes.error);
+    } else {
+      const errorNote = pushRes.errors?.length
+        ? `, ${pushRes.errors.length} failed (${pushRes.errors.map((e) => e.error).join('; ')})`
+        : '';
+      alert(`Pushed ${pushRes.pushed} file${pushRes.pushed === 1 ? '' : 's'}${errorNote}.`);
+    }
+  } finally {
+    syncPushBtn.classList.remove('pushing');
   }
   await refreshSyncStatus();
   if (currentFolderId) await loadFolder(currentFolderId);

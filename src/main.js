@@ -378,6 +378,10 @@ ipcMain.handle('sync:pull', async (_event, projectId) => {
   return localSync.pull(projectId);
 });
 
+ipcMain.handle('sync:push', async (_event, projectId) => {
+  return localSync.push(projectId);
+});
+
 ipcMain.handle('sync:unlink', (_event, projectId) => {
   localSync.unlinkSync(projectId);
   return { ok: true };
@@ -392,9 +396,15 @@ ipcMain.handle('sync:isLinked', (_event, projectId) => {
 ipcMain.handle('auth:signIn', async () => {
   try {
     const profile = await serverAuth.login();
-    // Fire-and-forget — bringing every linked project's watcher/poller back
-    // up shouldn't hold up the sign-in response the renderer is waiting on.
-    localSync.resumeAll().catch(() => {});
+    // Awaited on purpose, even though it delays the response slightly:
+    // this used to be fire-and-forget, which let the renderer finish
+    // loading (and check a project's sync status) before resumeAll had
+    // actually restarted that project's watcher/poller — the project
+    // looked unsynced until the user navigated away and back, by which
+    // point the race had quietly resolved itself. Awaiting here means
+    // sync is genuinely running for every linked project by the time the
+    // renderer sees this response at all.
+    await localSync.resumeAll().catch(() => {});
     return { ok: true, profile };
   } catch (err) {
     return { ok: false, error: err.message };
@@ -409,7 +419,12 @@ ipcMain.handle('auth:signOut', async () => {
 
 ipcMain.handle('auth:status', async () => {
   const result = await serverAuth.status();
-  if (result.signedIn) localSync.resumeAll().catch(() => {});
+  // Awaited — see the matching comment in auth:signIn. This handler in
+  // particular runs on every single app launch (it's how the renderer
+  // finds out it's already signed in), so this is the race's most common
+  // trigger: without waiting here, a project could look unsynced for the
+  // first several seconds after every restart.
+  if (result.signedIn) await localSync.resumeAll().catch(() => {});
   return result;
 });
 

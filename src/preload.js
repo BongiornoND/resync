@@ -25,6 +25,7 @@ contextBridge.exposeInMainWorld('api', {
   sync: {
     getStatus: (projectId) => ipcRenderer.invoke('sync:getStatus', projectId),
     pull: (projectId) => ipcRenderer.invoke('sync:pull', projectId),
+    push: (projectId) => ipcRenderer.invoke('sync:push', projectId),
     unlink: (projectId) => ipcRenderer.invoke('sync:unlink', projectId),
     isLinked: (projectId) => ipcRenderer.invoke('sync:isLinked', projectId),
   },

@@ -160,6 +160,16 @@ async function handleLocalChange(entry, relPath) {
     return;
   }
 
+  // Basic mode has no checkout to protect a push, so pushing isn't
+  // automatic here at all — it's just flagged as pending until the user
+  // clicks "Push changes" (push(), below) to send everything at once.
+  // Advisory/check-in still push the instant a change is detected,
+  // protected by checkout.
+  if (entry.syncMode === 'basic') {
+    entry.pendingPush.set(relPath, true);
+    return;
+  }
+
   entry.status = 'syncing';
   const remoteInfo = entry.filesByRelPath.get(relPath);
   const fileId = state?.fileId || remoteInfo?.fileId || null;
@@ -176,16 +186,6 @@ async function handleLocalChange(entry, relPath) {
       entry.idToRelPath.set(created.id, relPath);
       syncStateStore.setFileState(entry.projectId, relPath, {
         fileId: created.id,
-        lastSyncedVersionId: newVersionId,
-        lastSyncedSize: stat.size,
-        lastLocalMtimeMs: stat.mtimeMs,
-      });
-    } else if (entry.syncMode === 'basic') {
-      await serverClient.uploadVersion(fileId, absPath, SYNC_MESSAGE);
-      const versions = await serverClient.listVersions(fileId);
-      newVersionId = versions[0].id;
-      syncStateStore.setFileState(entry.projectId, relPath, {
-        fileId,
         lastSyncedVersionId: newVersionId,
         lastSyncedSize: stat.size,
         lastLocalMtimeMs: stat.mtimeMs,
@@ -222,6 +222,66 @@ async function handleLocalChange(entry, relPath) {
   }
 }
 
+// --- Manual batch push (basic mode only) — the "Push changes" button. ---
+
+async function pushOne(entry, relPath) {
+  const absPath = toAbsPath(entry.localDir, relPath);
+  if (!fs.existsSync(absPath)) {
+    entry.pendingPush.delete(relPath); // gone since it was flagged — nothing to push
+    return;
+  }
+  const stat = fs.statSync(absPath);
+  const state = syncStateStore.getFileState(entry.projectId, relPath);
+  const remoteInfo = entry.filesByRelPath.get(relPath);
+  const fileId = state?.fileId || remoteInfo?.fileId || null;
+
+  let newVersionId;
+  if (!fileId) {
+    const parentRel = path.posix.dirname(relPath) === '.' ? '' : path.posix.dirname(relPath);
+    const folderId = await ensureRemoteFolder(entry, parentRel);
+    const created = await serverClient.uploadFile(folderId, absPath, path.posix.basename(relPath));
+    const versions = await serverClient.listVersions(created.id);
+    newVersionId = versions[0].id;
+    entry.filesByRelPath.set(relPath, { fileId: created.id, latestVersionId: newVersionId, size: stat.size, name: created.name });
+    entry.idToRelPath.set(created.id, relPath);
+    syncStateStore.setFileState(entry.projectId, relPath, {
+      fileId: created.id,
+      lastSyncedVersionId: newVersionId,
+      lastSyncedSize: stat.size,
+      lastLocalMtimeMs: stat.mtimeMs,
+    });
+  } else {
+    await serverClient.uploadVersion(fileId, absPath, SYNC_MESSAGE);
+    const versions = await serverClient.listVersions(fileId);
+    newVersionId = versions[0].id;
+    syncStateStore.setFileState(entry.projectId, relPath, {
+      fileId,
+      lastSyncedVersionId: newVersionId,
+      lastSyncedSize: stat.size,
+      lastLocalMtimeMs: stat.mtimeMs,
+    });
+  }
+  entry.pendingPush.delete(relPath);
+}
+
+async function push(projectId) {
+  const entry = registry.get(projectId);
+  if (!entry) return { ok: false, error: 'This project is not syncing' };
+  let pushed = 0;
+  const errors = [];
+  for (const relPath of Array.from(entry.pendingPush.keys())) {
+    try {
+      await pushOne(entry, relPath);
+      pushed++;
+    } catch (err) {
+      entry.lastError = err.message;
+      errors.push({ relPath, error: err.message });
+    }
+  }
+  entry.status = 'idle';
+  return { ok: true, pushed, errors };
+}
+
 // --- Poll (detect remote changes — never writes to disk) ---
 
 async function pollRemote(entry) {
@@ -250,6 +310,16 @@ async function pollRemote(entry) {
 // changes" button) or for a single file by the checkout guard below. ---
 
 async function pullOne(entry, relPath, remoteInfo) {
+  // A pending (unpushed) local push means a local edit hasn't reached the
+  // server yet — pulling now would silently overwrite it before "Push
+  // changes" ever got a chance to send it. Basic mode has no conflict-file
+  // mechanism (see below), so the safest thing is to just leave this one
+  // file alone; it stays in pendingPull and is retried on the next pull.
+  // Pushing it is what actually resolves the race — still "whoever syncs
+  // last wins" the mode has always promised, just without a pull clobbering
+  // an edit still sitting in the outbox.
+  if (entry.pendingPush.has(relPath)) return { conflict: false, skipped: true };
+
   const absPath = toAbsPath(entry.localDir, relPath);
   const state = syncStateStore.getFileState(entry.projectId, relPath);
   let localChanged = false;
@@ -299,17 +369,19 @@ async function pull(projectId) {
   if (!entry) return { ok: false, error: 'This project is not syncing' };
   let pulled = 0;
   let conflicts = 0;
+  let skipped = 0;
   for (const [relPath, remoteInfo] of Array.from(entry.pendingPull.entries())) {
     try {
       const result = await pullOne(entry, relPath, remoteInfo);
-      if (result.conflict) conflicts++;
+      if (result.skipped) skipped++;
+      else if (result.conflict) conflicts++;
       else pulled++;
     } catch (err) {
       entry.lastError = err.message;
     }
   }
   entry.status = entry.blockedPush.size > 0 ? 'blocked' : 'idle';
-  return { ok: true, pulled, conflicts };
+  return { ok: true, pulled, conflicts, skipped };
 }
 
 // --- Checkout guard — shared by the manual "Check Out" button and this
@@ -376,6 +448,7 @@ async function startSync({ projectId, projectName, rootFolderId, localDir, syncM
     folderIdByRelPath: new Map([['', rootFolderId]]),
     idToRelPath: new Map(),
     pendingPull: new Map(),
+    pendingPush: new Map(),
     blockedPush: new Map(),
     expectedWrites: new Map(),
     status: 'idle',
@@ -454,6 +527,7 @@ function getStatus(projectId) {
     syncMode: entry.syncMode,
     status: entry.status,
     pendingPullCount: entry.pendingPull.size,
+    pendingPushCount: entry.pendingPush.size,
     conflicts: Object.entries(conflicts).map(([relPath, c]) => ({ relPath, conflictPath: c.conflictPath })),
     blocked: Array.from(entry.blockedPush.entries()).map(([relPath, reason]) => ({ relPath, reason })),
     lastError: entry.lastError,
@@ -471,6 +545,7 @@ module.exports = {
   resumeAll,
   stopAll,
   pull,
+  push,
   getStatus,
   guardCheckout,
   isLinked,
