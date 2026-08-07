@@ -1164,6 +1164,11 @@ function renderFileDetails(file) {
       ${file.uploadedBy ? `<div class="meta-row"><span class="k">Uploaded by</span><span class="v">${escapeHtml(file.uploadedBy)}</span></div>` : ''}
     </div>
     ${
+      file.id && hasApi
+        ? `<button id="open-file-btn" class="local-tool-btn">Open in default app</button>`
+        : ''
+    }
+    ${
       showLockUi
         ? `<div class="lock-status ${file.lock ? (isMine ? 'mine' : 'other') : 'free'}">
             ${file.lock ? `&#128274; Checked out by ${isMine ? 'you' : escapeHtml(file.lock.name)}` : '&#128275; Available — not checked out'}
@@ -1194,6 +1199,18 @@ function renderFileDetails(file) {
       <div class="section-label">Version history</div>
       <div id="version-history-list" class="version-list"></div>
     </div>`;
+
+  const openFileBtn = document.getElementById('open-file-btn');
+  if (openFileBtn) {
+    openFileBtn.addEventListener('click', async () => {
+      openFileBtn.disabled = true;
+      openFileBtn.textContent = 'Opening…';
+      const res = await window.api.server.openFileInDefaultApp(file.id, file.latestVersionId, file.name);
+      openFileBtn.disabled = false;
+      openFileBtn.textContent = 'Open in default app';
+      if (!res.ok) alert('Could not open file: ' + res.error);
+    });
+  }
 
   const uploadVersionBtn = document.getElementById('upload-version-btn');
   if (uploadVersionBtn) {

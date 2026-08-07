@@ -704,6 +704,30 @@ ipcMain.handle('server:downloadVersion', async (_event, versionId) => {
   }
 });
 
+// Opens a file with whatever the OS has registered for its extension. If
+// the project is continuously synced and this exact file already exists
+// locally, that real file is opened directly — editing it there feeds
+// straight back into sync. Otherwise the latest version is downloaded to
+// a throwaway temp copy just for viewing (edits to it go nowhere).
+ipcMain.handle('server:openFileInDefaultApp', async (_event, { fileId, versionId, fileName }) => {
+  try {
+    let targetPath = localSync.getLocalPath(fileId);
+    let openedLocalCopy = !!targetPath;
+    if (!targetPath) {
+      const buffer = await serverClient.downloadVersion(versionId);
+      const tmpDir = path.join(app.getPath('temp'), 'resync-open');
+      fs.mkdirSync(tmpDir, { recursive: true });
+      targetPath = path.join(tmpDir, sanitizeFilename(fileName));
+      fs.writeFileSync(targetPath, buffer);
+    }
+    const openError = await shell.openPath(targetPath);
+    if (openError) return { ok: false, error: openError };
+    return { ok: true, openedLocalCopy };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
 // --- Activity feed, notifications, tags ---
 
 ipcMain.handle('server:getProjectActivity', async (_event, projectId) => {

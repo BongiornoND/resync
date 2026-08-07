@@ -396,6 +396,17 @@ function findByFileId(fileId) {
   return null;
 }
 
+// The real on-disk path for a synced file, if its project is linked and
+// the file actually exists there — used by "Open in default app" so
+// editing it, when possible, feeds straight back into continuous sync
+// instead of opening a disconnected throwaway copy.
+function getLocalPath(fileId) {
+  const found = findByFileId(fileId);
+  if (!found) return null;
+  const absPath = toAbsPath(found.entry.localDir, found.relPath);
+  return fs.existsSync(absPath) ? absPath : null;
+}
+
 async function guardCheckout(fileId) {
   const found = findByFileId(fileId);
   if (!found) return { ok: true }; // not a synced project — nothing to guard
@@ -548,5 +559,6 @@ module.exports = {
   push,
   getStatus,
   guardCheckout,
+  getLocalPath,
   isLinked,
 };

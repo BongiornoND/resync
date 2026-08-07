@@ -51,6 +51,8 @@ contextBridge.exposeInMainWorld('api', {
     restoreVersion: (fileId, versionId) => ipcRenderer.invoke('server:restoreVersion', { fileId, versionId }),
     listVersions: (fileId) => ipcRenderer.invoke('server:listVersions', fileId),
     downloadVersion: (versionId) => ipcRenderer.invoke('server:downloadVersion', versionId),
+    openFileInDefaultApp: (fileId, versionId, fileName) =>
+      ipcRenderer.invoke('server:openFileInDefaultApp', { fileId, versionId, fileName }),
     checkoutFile: (fileId) => ipcRenderer.invoke('server:checkoutFile', fileId),
     checkinFile: (fileId) => ipcRenderer.invoke('server:checkinFile', fileId),
     uploadFilePath: (folderId, filePath) => ipcRenderer.invoke('server:uploadFilePath', { folderId, filePath }),
