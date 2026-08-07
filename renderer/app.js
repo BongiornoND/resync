@@ -1613,19 +1613,69 @@ function showDemoModeBrowser() {
 }
 
 // --- Search (current project only — files.js has no cross-project index) ---
+//
+// The search box supports two operators alongside plain name text:
+//   tag:<name>   only files carrying that tag (repeat for AND: tag:a tag:b)
+//   type:<value> only files of that type — either a literal extension
+//                (type:sldprt), a broader category (type:3d, type:image,
+//                type:code, type:text, type:csv, type:pdf), or "folder"/
+//                "folders" to show only folders. Category names expand to
+//                the same extension groups classify() uses for file icons,
+//                so the two stay in sync by construction.
+// Everything else in the query is free text matched against the name,
+// same as before. See parseSearchQuery().
+
+const TYPE_EXTENSIONS = {
+  '3d': ['step', 'stp', 'iges', 'igs', 'brep', 'stl', 'obj', 'gltf', 'glb', 'sldprt', 'sldasm'],
+  model: ['step', 'stp', 'iges', 'igs', 'brep', 'stl', 'obj', 'gltf', 'glb', 'sldprt', 'sldasm'],
+  models: ['step', 'stp', 'iges', 'igs', 'brep', 'stl', 'obj', 'gltf', 'glb', 'sldprt', 'sldasm'],
+  image: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'],
+  images: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'],
+  pdf: ['pdf'],
+  code: ['py', 'js', 'ts', 'json', 'yaml', 'yml', 'xml', 'c', 'cpp', 'h', 'java', 'go', 'rs', 'sh'],
+  text: ['txt', 'md', 'log'],
+  csv: ['csv'],
+};
+
+function parseSearchQuery(raw) {
+  const tags = [];
+  const exts = new Set();
+  let kind = 'all';
+  const freeWords = [];
+  for (const token of raw.trim().split(/\s+/).filter(Boolean)) {
+    const m = token.match(/^(tag|type):(.+)$/i);
+    if (!m) {
+      freeWords.push(token);
+      continue;
+    }
+    const key = m[1].toLowerCase();
+    const value = m[2];
+    if (key === 'tag') {
+      tags.push(value);
+    } else {
+      const v = value.toLowerCase().replace(/^\./, '');
+      if (v === 'folder' || v === 'folders' || v === 'dir') kind = 'folders';
+      else if (TYPE_EXTENSIONS[v]) TYPE_EXTENSIONS[v].forEach((e) => exts.add(e));
+      else exts.add(v);
+    }
+  }
+  return { query: freeWords.join(' '), tags, exts: Array.from(exts), kind };
+}
 
 const searchBoxEl = document.querySelector('.search-box');
 const searchInputEl = document.getElementById('search-input');
 const searchResultsEl = document.getElementById('search-results');
 let searchDebounceTimer = null;
 
-async function runSearch(query) {
-  if (!currentProjectId || !query.trim()) {
+async function runSearch(rawQuery) {
+  const parsed = parseSearchQuery(rawQuery);
+  const hasFilters = parsed.query || parsed.tags.length || parsed.exts.length || parsed.kind !== 'all';
+  if (!currentProjectId || !hasFilters) {
     searchResultsEl.hidden = true;
     searchResultsEl.innerHTML = '';
     return;
   }
-  const res = await window.api.server.searchProject(currentProjectId, query.trim());
+  const res = await window.api.server.searchProject(currentProjectId, parsed);
   if (!res.ok) return;
 
   const rows = [

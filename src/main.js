@@ -687,9 +687,9 @@ ipcMain.handle('server:getTrash', async (_event, projectId) => {
   }
 });
 
-ipcMain.handle('server:searchProject', async (_event, { projectId, query }) => {
+ipcMain.handle('server:searchProject', async (_event, { projectId, query, tags, exts, kind }) => {
   try {
-    return { ok: true, ...(await serverClient.searchProject(projectId, query)) };
+    return { ok: true, ...(await serverClient.searchProject(projectId, { query, tags, exts, kind })) };
   } catch (err) {
     return { ok: false, error: err.message };
   }

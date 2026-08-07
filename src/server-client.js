@@ -252,8 +252,16 @@ async function getTrash(projectId) {
   return data;
 }
 
-async function searchProject(projectId, query) {
-  const res = await apiFetch(`/api/projects/${projectId}/search?q=${encodeURIComponent(query)}`);
+// { query, tags, exts, kind } — tags/exts filter to files matched by the
+// search box's tag:/type: operators (see app.js's parseSearchQuery), kind
+// is 'all' | 'files' | 'folders'.
+async function searchProject(projectId, { query = '', tags = [], exts = [], kind = 'all' } = {}) {
+  const params = new URLSearchParams();
+  if (query) params.set('q', query);
+  if (tags.length) params.set('tag', tags.join(','));
+  if (exts.length) params.set('ext', exts.join(','));
+  if (kind !== 'all') params.set('kind', kind);
+  const res = await apiFetch(`/api/projects/${projectId}/search?${params.toString()}`);
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || 'Search failed');
   return data;

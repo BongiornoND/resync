@@ -66,7 +66,7 @@ contextBridge.exposeInMainWorld('api', {
     deleteFolder: (folderId) => ipcRenderer.invoke('server:deleteFolder', folderId),
     restoreFolder: (folderId) => ipcRenderer.invoke('server:restoreFolder', folderId),
     getTrash: (projectId) => ipcRenderer.invoke('server:getTrash', projectId),
-    searchProject: (projectId, query) => ipcRenderer.invoke('server:searchProject', { projectId, query }),
+    searchProject: (projectId, opts) => ipcRenderer.invoke('server:searchProject', { projectId, ...opts }),
     syncProjectToLocal: (projectId, projectName, rootFolderId) =>
       ipcRenderer.invoke('server:syncProjectToLocal', { projectId, projectName, rootFolderId }),
     getProjectActivity: (projectId) => ipcRenderer.invoke('server:getProjectActivity', projectId),
