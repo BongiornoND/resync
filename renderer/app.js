@@ -1648,6 +1648,30 @@ const TYPE_EXTENSIONS = {
   csv: ['csv'],
 };
 
+// Whitespace-splits the query EXCEPT inside double quotes, so a value with
+// spaces in it (a tag named "In Review", a person's full name) can be
+// typed as one token: tag:"In Review". Quotes are stripped from the
+// result. Autocomplete (below) only ever inserts a quoted value when the
+// value itself contains a space, so this is what makes accepting a
+// multi-word suggestion actually round-trip correctly.
+function tokenizeSearchQuery(raw) {
+  const tokens = [];
+  let current = '';
+  let inQuotes = false;
+  for (const c of raw) {
+    if (c === '"') {
+      inQuotes = !inQuotes;
+    } else if (/\s/.test(c) && !inQuotes) {
+      if (current) tokens.push(current);
+      current = '';
+    } else {
+      current += c;
+    }
+  }
+  if (current) tokens.push(current);
+  return tokens;
+}
+
 function parseSearchQuery(raw) {
   const tags = [];
   const exts = new Set();
@@ -1656,7 +1680,7 @@ function parseSearchQuery(raw) {
   let size = '';
   let locked = '';
   const freeWords = [];
-  for (const token of raw.trim().split(/\s+/).filter(Boolean)) {
+  for (const token of tokenizeSearchQuery(raw.trim())) {
     const m = token.match(/^(tag|type|by|size|locked):(.+)$/i);
     if (!m) {
       freeWords.push(token);
@@ -1680,6 +1704,143 @@ function parseSearchQuery(raw) {
     }
   }
   return { query: freeWords.join(' '), tags, exts: Array.from(exts), kind, by, size, locked };
+}
+
+// --- Search autocomplete — typing an operator's key (tag:, by:, locked:,
+// type:) pops up real values to pick from instead of making you guess
+// exact spelling. Only active while there's no space yet after the colon
+// (see detectOperatorContext) — once a value's accepted, or free text
+// follows, normal search takes back over.
+
+const TYPE_SUGGESTIONS = ['3d', 'image', 'pdf', 'code', 'text', 'csv', 'folder'];
+const LOCKED_SUGGESTIONS = ['yes', 'no', 'me'];
+
+// Cached per project for the lifetime of viewing it — tags/people rarely
+// change mid-session, and re-fetching on every keystroke would make the
+// dropdown feel laggy for no real benefit.
+let searchTagsCache = null; // { projectId, tags: [{name, color}] }
+let searchPeopleCache = null; // { projectId, people: [{name, email}] }
+
+async function getCachedSearchTags() {
+  if (searchTagsCache && searchTagsCache.projectId === currentProjectId) return searchTagsCache.tags;
+  const res = await window.api.server.listProjectTags(currentProjectId);
+  const tags = res.ok ? res.tags : [];
+  searchTagsCache = { projectId: currentProjectId, tags };
+  return tags;
+}
+
+async function getCachedSearchPeople() {
+  if (searchPeopleCache && searchPeopleCache.projectId === currentProjectId) return searchPeopleCache.people;
+  const res = await window.api.server.getProjectMembers(currentProjectId);
+  const people = res.ok ? [res.owner, ...res.members].filter(Boolean) : [];
+  searchPeopleCache = { projectId: currentProjectId, people };
+  return people;
+}
+
+// Finds the operator token the caret is currently inside, if any — e.g.
+// typing "tag:ur|" (| = caret) returns {key:'tag', partial:'ur', ...}.
+// Deliberately only recognizes the no-space-yet case (see
+// tokenizeSearchQuery's docstring for why multi-word values are typed
+// quoted instead) — that covers autocomplete's actual job, picking a
+// value before you've finished typing it by hand.
+function detectOperatorContext(input) {
+  const value = input.value;
+  const caret = input.selectionStart ?? value.length;
+  const before = value.slice(0, caret);
+  const m = before.match(/(?:^|\s)(tag|type|by|size|locked):([^"\s]*)$/i);
+  if (!m) return null;
+  const leadingSpace = /^\s/.test(m[0]) ? 1 : 0;
+  return { key: m[1].toLowerCase(), partial: m[2], tokenStart: caret - m[0].length + leadingSpace, caret };
+}
+
+async function suggestionsFor(key, partial) {
+  const p = partial.toLowerCase();
+  if (key === 'tag') {
+    const tags = await getCachedSearchTags();
+    return tags.filter((t) => t.name.toLowerCase().includes(p)).map((t) => ({ value: t.name, label: t.name, color: t.color }));
+  }
+  if (key === 'type') {
+    return TYPE_SUGGESTIONS.filter((v) => v.includes(p)).map((v) => ({ value: v, label: v }));
+  }
+  if (key === 'by' || key === 'locked') {
+    const people = (await getCachedSearchPeople())
+      .filter((m) => (m.name || m.email || '').toLowerCase().includes(p) || (m.email || '').toLowerCase().includes(p))
+      // Inserted value is the email, never the display name — names can
+      // contain spaces, and this box only auto-quotes fixed keywords, not
+      // person lookups (an email round-trips as a single token for free).
+      .map((m) => ({ value: m.email, label: m.name ? `${m.name} (${m.email})` : m.email }));
+    if (key === 'locked') {
+      const fixed = LOCKED_SUGGESTIONS.filter((v) => v.includes(p)).map((v) => ({ value: v, label: v }));
+      return [...fixed, ...people];
+    }
+    return people;
+  }
+  return []; // size: has no fixed vocabulary — free-typed value only
+}
+
+function insertSearchToken(input, ctx, value) {
+  const needsQuotes = /\s/.test(value);
+  const insertText = `${ctx.key}:${needsQuotes ? `"${value}"` : value} `;
+  input.value = input.value.slice(0, ctx.tokenStart) + insertText + input.value.slice(ctx.caret);
+  const newCaret = ctx.tokenStart + insertText.length;
+  input.setSelectionRange(newCaret, newCaret);
+  input.focus();
+}
+
+let activeSuggestions = []; // [{value, label, color?}]
+let activeSuggestionCtx = null;
+let activeSuggestionIndex = -1;
+
+function highlightSuggestion(index) {
+  const rows = searchResultsEl.querySelectorAll('.search-suggestion-row');
+  rows.forEach((r, i) => r.classList.toggle('active', i === index));
+  if (index >= 0 && rows[index]) rows[index].scrollIntoView({ block: 'nearest' });
+}
+
+function acceptSuggestion(index) {
+  if (!activeSuggestionCtx || !activeSuggestions[index]) return;
+  insertSearchToken(searchInputEl, activeSuggestionCtx, activeSuggestions[index].value);
+  clearSuggestions();
+  searchInputEl.dispatchEvent(new Event('input'));
+}
+
+function clearSuggestions() {
+  activeSuggestions = [];
+  activeSuggestionCtx = null;
+  activeSuggestionIndex = -1;
+  searchResultsEl.hidden = true;
+  searchResultsEl.innerHTML = '';
+}
+
+async function showSearchSuggestions(ctx) {
+  const suggestions = await suggestionsFor(ctx.key, ctx.partial);
+  // The user may have kept typing (or left the token) while the lookup
+  // was in flight — only render if this is still the live context.
+  const stillLive = detectOperatorContext(searchInputEl);
+  if (!stillLive || stillLive.key !== ctx.key || stillLive.tokenStart !== ctx.tokenStart) return;
+
+  activeSuggestions = suggestions;
+  activeSuggestionCtx = ctx;
+  activeSuggestionIndex = -1;
+
+  if (!suggestions.length) {
+    searchResultsEl.hidden = true;
+    searchResultsEl.innerHTML = '';
+    return;
+  }
+  searchResultsEl.innerHTML = suggestions
+    .map(
+      (s, i) => `
+    <div class="search-result-row search-suggestion-row" data-index="${i}">
+      ${s.color ? `<span class="search-suggestion-dot" style="background:${escapeHtml(s.color)}"></span>` : '<span class="search-result-icon">&#128269;</span>'}
+      <span class="search-result-name">${escapeHtml(s.label)}</span>
+    </div>`
+    )
+    .join('');
+  searchResultsEl.hidden = false;
+  searchResultsEl.querySelectorAll('.search-suggestion-row').forEach((row) => {
+    row.addEventListener('click', () => acceptSuggestion(Number(row.dataset.index)));
+  });
 }
 
 const searchBoxEl = document.querySelector('.search-box');
@@ -2306,16 +2467,50 @@ if (hasApi) {
 
   searchInputEl.addEventListener('input', () => {
     clearTimeout(searchDebounceTimer);
-    searchDebounceTimer = setTimeout(() => runSearch(searchInputEl.value), 200);
+    const ctx = detectOperatorContext(searchInputEl);
+    if (ctx) {
+      // Suggestion mode: don't also fire a real (necessarily-incomplete)
+      // server search while the value's still being typed/picked.
+      searchDebounceTimer = setTimeout(() => showSearchSuggestions(ctx), 120);
+    } else {
+      clearSuggestions();
+      searchDebounceTimer = setTimeout(() => runSearch(searchInputEl.value), 200);
+    }
   });
   searchInputEl.addEventListener('keydown', (e) => {
+    if (activeSuggestions.length) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        activeSuggestionIndex = Math.min(activeSuggestionIndex + 1, activeSuggestions.length - 1);
+        highlightSuggestion(activeSuggestionIndex);
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        activeSuggestionIndex = Math.max(activeSuggestionIndex - 1, 0);
+        highlightSuggestion(activeSuggestionIndex);
+        return;
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault();
+        acceptSuggestion(activeSuggestionIndex >= 0 ? activeSuggestionIndex : 0);
+        return;
+      }
+      if (e.key === 'Escape') {
+        clearSuggestions();
+        return;
+      }
+    }
     if (e.key === 'Escape') {
       searchResultsEl.hidden = true;
       searchInputEl.blur();
     }
   });
   document.addEventListener('click', (e) => {
-    if (!searchBoxEl.contains(e.target)) searchResultsEl.hidden = true;
+    if (!searchBoxEl.contains(e.target)) {
+      searchResultsEl.hidden = true;
+      clearSuggestions();
+    }
   });
 
   trashBtn.hidden = false;

@@ -312,6 +312,8 @@ body { font-family: 'Geoform', sans-serif; }
 .search-result-row:hover { background: var(--rs-surface-2); }
 .search-result-icon { flex: 0 0 auto; font-size: 13px; }
 .search-result-name { color: var(--rs-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.search-suggestion-row.active { background: var(--rs-surface-2); }
+.search-suggestion-dot { flex: 0 0 auto; width: 9px; height: 9px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.18); }
 .icon-btn {
   width: 34px; height: 34px; border-radius: 50%; background: transparent; border: none;
   display: flex; align-items: center; justify-content: center; cursor: pointer; flex: 0 0 auto; padding: 0;
