@@ -252,15 +252,19 @@ async function getTrash(projectId) {
   return data;
 }
 
-// { query, tags, exts, kind } — tags/exts filter to files matched by the
-// search box's tag:/type: operators (see app.js's parseSearchQuery), kind
-// is 'all' | 'files' | 'folders'.
-async function searchProject(projectId, { query = '', tags = [], exts = [], kind = 'all' } = {}) {
+// { query, tags, exts, kind, by, size, locked } — matches the search box's
+// tag:/type:/by:/size:/locked: operators (see app.js's parseSearchQuery).
+// kind is 'all' | 'files' | 'folders'; by/size/locked are forwarded as raw
+// strings for the server to interpret (see resync-server's search route).
+async function searchProject(projectId, { query = '', tags = [], exts = [], kind = 'all', by = '', size = '', locked = '' } = {}) {
   const params = new URLSearchParams();
   if (query) params.set('q', query);
   if (tags.length) params.set('tag', tags.join(','));
   if (exts.length) params.set('ext', exts.join(','));
   if (kind !== 'all') params.set('kind', kind);
+  if (by) params.set('by', by);
+  if (size) params.set('size', size);
+  if (locked) params.set('locked', locked);
   const res = await apiFetch(`/api/projects/${projectId}/search?${params.toString()}`);
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || 'Search failed');

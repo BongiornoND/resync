@@ -1614,15 +1614,26 @@ function showDemoModeBrowser() {
 
 // --- Search (current project only — files.js has no cross-project index) ---
 //
-// The search box supports two operators alongside plain name text:
-//   tag:<name>   only files carrying that tag (repeat for AND: tag:a tag:b)
-//   type:<value> only files of that type — either a literal extension
-//                (type:sldprt), a broader category (type:3d, type:image,
-//                type:code, type:text, type:csv, type:pdf), or "folder"/
-//                "folders" to show only folders. Category names expand to
-//                the same extension groups classify() uses for file icons,
-//                so the two stay in sync by construction.
-// Everything else in the query is free text matched against the name,
+// The search box supports several operators alongside plain name text:
+//   tag:<name>    only files carrying that tag (repeat for AND: tag:a tag:b)
+//   type:<value>  only files of that type — either a literal extension
+//                 (type:sldprt), a broader category (type:3d, type:image,
+//                 type:code, type:text, type:csv, type:pdf), or "folder"/
+//                 "folders" to show only folders. Category names expand to
+//                 the same extension groups classify() uses for file icons,
+//                 so the two stay in sync by construction.
+//   by:<name>     only files whose latest version was uploaded by someone
+//                 matching that name/email (partial match)
+//   size:<value>  only files at or beyond that size — ">10mb", "<500kb",
+//                 ">=1gb", or a bare number/unit ("10mb", meaning >=10mb).
+//                 Passed straight through; the server does the actual
+//                 unit/operator parsing (see resync-server's
+//                 parseSizeFilter) so it's only implemented once.
+//   locked:<value> checkout status — yes/no (any/no lock), me (checked out
+//                 by you), or a name/email for a specific person
+// tag:/type: are the only operators with client-side expansion (type: into
+// ext/kind); everything else forwards its raw value straight to the
+// server. Everything left over is free text matched against the name,
 // same as before. See parseSearchQuery().
 
 const TYPE_EXTENSIONS = {
@@ -1641,9 +1652,12 @@ function parseSearchQuery(raw) {
   const tags = [];
   const exts = new Set();
   let kind = 'all';
+  let by = '';
+  let size = '';
+  let locked = '';
   const freeWords = [];
   for (const token of raw.trim().split(/\s+/).filter(Boolean)) {
-    const m = token.match(/^(tag|type):(.+)$/i);
+    const m = token.match(/^(tag|type|by|size|locked):(.+)$/i);
     if (!m) {
       freeWords.push(token);
       continue;
@@ -1652,6 +1666,12 @@ function parseSearchQuery(raw) {
     const value = m[2];
     if (key === 'tag') {
       tags.push(value);
+    } else if (key === 'by') {
+      by = value;
+    } else if (key === 'size') {
+      size = value;
+    } else if (key === 'locked') {
+      locked = value;
     } else {
       const v = value.toLowerCase().replace(/^\./, '');
       if (v === 'folder' || v === 'folders' || v === 'dir') kind = 'folders';
@@ -1659,7 +1679,7 @@ function parseSearchQuery(raw) {
       else exts.add(v);
     }
   }
-  return { query: freeWords.join(' '), tags, exts: Array.from(exts), kind };
+  return { query: freeWords.join(' '), tags, exts: Array.from(exts), kind, by, size, locked };
 }
 
 const searchBoxEl = document.querySelector('.search-box');
@@ -1669,7 +1689,8 @@ let searchDebounceTimer = null;
 
 async function runSearch(rawQuery) {
   const parsed = parseSearchQuery(rawQuery);
-  const hasFilters = parsed.query || parsed.tags.length || parsed.exts.length || parsed.kind !== 'all';
+  const hasFilters =
+    parsed.query || parsed.tags.length || parsed.exts.length || parsed.kind !== 'all' || parsed.by || parsed.size || parsed.locked;
   if (!currentProjectId || !hasFilters) {
     searchResultsEl.hidden = true;
     searchResultsEl.innerHTML = '';
