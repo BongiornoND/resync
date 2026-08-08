@@ -49,6 +49,7 @@ contextBridge.exposeInMainWorld('api', {
     createFolder: (parentId, name) => ipcRenderer.invoke('server:createFolder', { parentId, name }),
     chooseFilesToUpload: () => ipcRenderer.invoke('server:chooseFilesToUpload'),
     uploadVersion: (fileId, message) => ipcRenderer.invoke('server:uploadVersion', { fileId, message }),
+    saveCsvEdits: (fileId, csvText) => ipcRenderer.invoke('server:saveCsvEdits', { fileId, csvText }),
     restoreVersion: (fileId, versionId) => ipcRenderer.invoke('server:restoreVersion', { fileId, versionId }),
     listVersions: (fileId) => ipcRenderer.invoke('server:listVersions', fileId),
     downloadVersion: (versionId) => ipcRenderer.invoke('server:downloadVersion', versionId),

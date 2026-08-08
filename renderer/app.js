@@ -16,6 +16,10 @@ const previewPlaceholderEl = document.getElementById('preview-placeholder');
 const previewTypeBadgeEl = document.getElementById('preview-type-badge');
 const previewTreeEl = document.getElementById('preview-assembly-tree');
 const fullscreenCloseBtn = document.getElementById('preview-fullscreen-close');
+const csvActionsEl = document.getElementById('preview-csv-actions');
+const csvEditBtn = document.getElementById('csv-edit-btn');
+const csvSaveBtn = document.getElementById('csv-save-btn');
+const csvCancelBtn = document.getElementById('csv-cancel-btn');
 
 const previewViewer = createViewer({
   container: previewViewportEl,
@@ -32,6 +36,16 @@ let currentImageObjectUrl = null;
 // same transferable buffer and neither ever finishes rendering.
 let previewGeneration = 0;
 
+// CSV in-app editing state — csvEditRows is the source of truth (never
+// mutated by typing, only by a successful Save), so Cancel can always
+// discard live DOM edits by just re-rendering from it. csvEditFileId is
+// only set when the current preview is a file's latest version (see
+// dispatchPreview's editCtx) — editing a historical version doesn't make
+// sense, since saving always adds a new version on top of the latest.
+let csvEditRows = null;
+let csvEditFileId = null;
+let csvEditing = false;
+
 function hideAllPreviewModes() {
   previewViewportEl.hidden = true;
   previewImageEl.hidden = true;
@@ -46,6 +60,13 @@ function hideAllPreviewModes() {
   previewPdfContainerEl.innerHTML = '';
   previewTextEl.textContent = '';
   previewTableContainerEl.innerHTML = '';
+  csvActionsEl.hidden = true;
+  csvEditBtn.hidden = false;
+  csvSaveBtn.hidden = true;
+  csvCancelBtn.hidden = true;
+  csvEditRows = null;
+  csvEditFileId = null;
+  csvEditing = false;
 }
 
 function setPreviewStatus(text) {
@@ -221,6 +242,20 @@ function fileBaseName(p) {
   return p.split(/[\\/]/).pop();
 }
 
+// row/col refer to indexes into csvEditRows (the full, unfiltered parsed
+// CSV, header included at index 0) — set on every editable cell so Save
+// can read live DOM text back into the right place regardless of how few
+// of the real columns this particular view actually displays.
+function makeCell(text, rowIndex, colIndex) {
+  const td = document.createElement('td');
+  td.textContent = text;
+  if (rowIndex != null && colIndex != null) {
+    td.dataset.row = String(rowIndex);
+    td.dataset.col = String(colIndex);
+  }
+  return td;
+}
+
 function previewBomTable(rows) {
   const header = rows[0].map((h) => h.trim().toLowerCase());
   const idx = Object.fromEntries(BOM_CSV_COLUMNS.map((c) => [c, header.indexOf(c)]));
@@ -255,21 +290,18 @@ function previewBomTable(rows) {
   table.appendChild(thead);
 
   const tbody = document.createElement('tbody');
-  body.forEach((r) => {
+  body.forEach((r, i) => {
     const missing = r[idx.kind] === 'missing';
     const tr = document.createElement('tr');
     if (missing) tr.classList.add('bom-row-missing');
-    [
-      r[idx.qty] || '0',
-      r[idx.name] || '',
-      r[idx.part_number] || '—',
-      r[idx.description] || '—',
-      missing ? 'Missing' : fileBaseName(r[idx.file]) || '—',
-    ].forEach((val) => {
-      const td = document.createElement('td');
-      td.textContent = val;
-      tr.appendChild(td);
-    });
+    const rowIndex = i + 1; // +1 for the header occupying row 0
+    // Source is derived from the file path bom.py resolved — not
+    // editable, so it gets no row/col and Save never touches it.
+    tr.appendChild(makeCell(r[idx.qty] || '0', rowIndex, idx.qty));
+    tr.appendChild(makeCell(r[idx.name] || '', rowIndex, idx.name));
+    tr.appendChild(makeCell(r[idx.part_number] || '', rowIndex, idx.part_number));
+    tr.appendChild(makeCell(r[idx.description] || '', rowIndex, idx.description));
+    tr.appendChild(makeCell(missing ? 'Missing' : fileBaseName(r[idx.file]), null, null));
     tbody.appendChild(tr);
   });
   table.appendChild(tbody);
@@ -279,16 +311,7 @@ function previewBomTable(rows) {
   previewTableContainerEl.hidden = false;
 }
 
-function previewCsvBytes(bytes, fileName) {
-  hideAllPreviewModes();
-  const rows = parseCsv(decodeTextBytes(bytes));
-
-  if (isBomCsv(rows)) {
-    previewBomTable(rows);
-    markPreviewReady('Bill of Materials');
-    return;
-  }
-
+function previewGenericCsvTable(rows) {
   const shown = rows.slice(0, MAX_CSV_PREVIEW_ROWS);
 
   const table = document.createElement('table');
@@ -304,13 +327,9 @@ function previewCsvBytes(bytes, fileName) {
     table.appendChild(thead);
 
     const tbody = document.createElement('tbody');
-    shown.slice(1).forEach((r) => {
+    shown.slice(1).forEach((r, i) => {
       const tr = document.createElement('tr');
-      r.forEach((cell) => {
-        const td = document.createElement('td');
-        td.textContent = cell;
-        tr.appendChild(td);
-      });
+      r.forEach((cell, c) => tr.appendChild(makeCell(cell, i + 1, c)));
       tbody.appendChild(tr);
     });
     table.appendChild(tbody);
@@ -321,11 +340,100 @@ function previewCsvBytes(bytes, fileName) {
     const note = document.createElement('div');
     note.className = 'muted small';
     note.style.padding = '8px';
-    note.textContent = `Showing first ${MAX_CSV_PREVIEW_ROWS} of ${rows.length} rows.`;
+    note.textContent = `Showing first ${MAX_CSV_PREVIEW_ROWS} of ${rows.length} rows — editing isn't available past this cutoff.`;
     previewTableContainerEl.appendChild(note);
   }
-  previewTableContainerEl.hidden = false;
-  markPreviewReady('CSV');
+}
+
+// Rebuilds the table(s) from a rows snapshot without touching the source
+// bytes — used for the initial render and, since it never mutates `rows`
+// itself, to discard in-progress edits on Cancel by simply re-rendering.
+function renderCsvPreview(rows) {
+  previewTableContainerEl.innerHTML = '';
+  if (isBomCsv(rows)) {
+    previewBomTable(rows);
+    markPreviewReady('Bill of Materials');
+  } else {
+    previewGenericCsvTable(rows);
+    markPreviewReady('CSV');
+  }
+}
+
+function setCsvCellsEditable(editable) {
+  previewTableContainerEl.querySelectorAll('td[data-row]').forEach((td) => {
+    td.contentEditable = editable ? 'true' : 'false';
+    td.classList.toggle('csv-cell-editable', editable);
+  });
+}
+
+function enterCsvEditMode() {
+  csvEditing = true;
+  csvEditBtn.hidden = true;
+  csvSaveBtn.hidden = false;
+  csvCancelBtn.hidden = false;
+  setCsvCellsEditable(true);
+  const first = previewTableContainerEl.querySelector('td[data-row]');
+  if (first) first.focus();
+}
+
+function exitCsvEditMode() {
+  csvEditing = false;
+  csvEditBtn.hidden = false;
+  csvSaveBtn.hidden = true;
+  csvCancelBtn.hidden = true;
+  setCsvCellsEditable(false);
+}
+
+// Guards navigation away from an in-progress edit (selecting a different
+// file, or a different version of this one) — called before any action
+// that's about to replace the preview out from under unsaved edits.
+function confirmDiscardCsvEdits() {
+  if (!csvEditing) return true;
+  if (!confirm('Discard unsaved edits to this file?')) return false;
+  exitCsvEditMode();
+  return true;
+}
+
+csvEditBtn.addEventListener('click', enterCsvEditMode);
+
+csvCancelBtn.addEventListener('click', () => {
+  exitCsvEditMode();
+  renderCsvPreview(csvEditRows);
+});
+
+csvSaveBtn.addEventListener('click', async () => {
+  previewTableContainerEl.querySelectorAll('td[data-row]').forEach((td) => {
+    csvEditRows[Number(td.dataset.row)][Number(td.dataset.col)] = td.textContent;
+  });
+  const csvText = serializeCsv(csvEditRows);
+  csvSaveBtn.disabled = true;
+  csvSaveBtn.textContent = 'Saving…';
+  const res = await window.api.server.saveCsvEdits(csvEditFileId, csvText);
+  csvSaveBtn.disabled = false;
+  csvSaveBtn.textContent = 'Save';
+  if (!res.ok) {
+    alert('Could not save: ' + res.error);
+    return;
+  }
+  exitCsvEditMode();
+  renderCsvPreview(csvEditRows);
+  if (currentFolderId) loadFolder(currentFolderId);
+});
+
+function csvField(val) {
+  const s = val == null ? '' : String(val);
+  return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+function serializeCsv(rows) {
+  return '﻿' + rows.map((r) => r.map(csvField).join(',')).join('\r\n') + '\r\n';
+}
+
+function previewCsvBytes(bytes, fileName, editCtx) {
+  hideAllPreviewModes();
+  csvEditRows = parseCsv(decodeTextBytes(bytes));
+  csvEditFileId = editCtx ? editCtx.fileId : null;
+  csvActionsEl.hidden = !csvEditFileId;
+  renderCsvPreview(csvEditRows);
 }
 
 async function preview3D(kind, bytes, fileName, gen) {
@@ -360,7 +468,7 @@ async function preview3D(kind, bytes, fileName, gen) {
 // 'change' twice, or picking a new file before the previous preview
 // finished loading) can't clobber a newer one or leave two async loaders
 // racing over the same resources.
-async function dispatchPreview(c, bytes, fileName) {
+async function dispatchPreview(c, bytes, fileName, editCtx) {
   const gen = ++previewGeneration;
   switch (c.previewKind) {
     case 'step':
@@ -379,7 +487,7 @@ async function dispatchPreview(c, bytes, fileName) {
       await previewPdfBytes(bytes, fileName, gen);
       break;
     case 'csv':
-      previewCsvBytes(bytes, fileName);
+      previewCsvBytes(bytes, fileName, editCtx);
       break;
     case 'text':
       previewTextBytes(bytes, fileName, c.type);
@@ -1186,6 +1294,7 @@ function renderBreadcrumbs(breadcrumbs) {
 // Downloads and displays one specific historical version — same dispatch
 // path selectFile() uses for the latest, just pointed at an older blob.
 async function previewSpecificVersion(file, versionId) {
+  if (!confirmDiscardCsvEdits()) return;
   const c = classify(file);
   if (!c.previewKind) return;
   if (!hasApi) {
@@ -1197,6 +1306,9 @@ async function previewSpecificVersion(file, versionId) {
     setPreviewStatus('Download failed: ' + res.error);
     return;
   }
+  // No editCtx — editing only applies to a file's current/latest version,
+  // since saving always adds a new version on top of the latest, not this
+  // historical one.
   await dispatchPreview(c, new Uint8Array(res.data), file.name);
 }
 
@@ -1436,6 +1548,7 @@ function renderFileDetails(file) {
 }
 
 async function selectFile(file, rowEl) {
+  if (!confirmDiscardCsvEdits()) return;
   fileTableBodyEl.querySelectorAll('.file-row.selected').forEach((r) => r.classList.remove('selected'));
   if (rowEl) rowEl.classList.add('selected');
   selectedFileId = file.id;
@@ -1455,7 +1568,7 @@ async function selectFile(file, rowEl) {
     setPreviewStatus('Download failed: ' + res.error);
     return;
   }
-  await dispatchPreview(c, new Uint8Array(res.data), file.name);
+  await dispatchPreview(c, new Uint8Array(res.data), file.name, { fileId: file.id });
 }
 
 const DELETE_ICON =

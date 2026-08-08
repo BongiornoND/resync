@@ -579,6 +579,23 @@ ipcMain.handle('server:uploadVersion', async (_event, { fileId, message }) => {
   }
 });
 
+// In-app CSV editing (basic-edit / notes support) — the edited text lives
+// in the renderer, not on disk, so it goes through a temp file and the
+// same uploadVersion path "Upload New Version…" already uses, rather than
+// inventing a second upload mechanism.
+ipcMain.handle('server:saveCsvEdits', async (_event, { fileId, csvText }) => {
+  const outPath = path.join(app.getPath('temp'), `resync-csv-edit-${Date.now()}-${Math.random().toString(36).slice(2)}.csv`);
+  try {
+    fs.writeFileSync(outPath, csvText, 'utf8');
+    const file = await serverClient.uploadVersion(fileId, outPath, 'Edited in app');
+    return { ok: true, file };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  } finally {
+    fs.unlink(outPath, () => {});
+  }
+});
+
 ipcMain.handle('server:restoreVersion', async (_event, { fileId, versionId }) => {
   try {
     const file = await serverClient.restoreVersion(fileId, versionId);
