@@ -605,6 +605,11 @@ body { font-family: 'Geoform', sans-serif; }
 }
 .preview-table-container th { background: #f3f9fa; font-weight: 600; position: sticky; top: 0; }
 
+.bom-summary { padding: 6px 9px 10px; font-size: 12.5px; color: #75868a; }
+.bom-table th:first-child, .bom-table td:first-child { text-align: right; font-variant-numeric: tabular-nums; }
+.bom-table th:first-child { color: var(--rs-accent-text); }
+.bom-row-missing td { background: var(--rs-danger-soft-bg); color: var(--rs-danger); }
+
 .preview-placeholder {
   position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
   color: #9aa8ab; font-size: 12.5px; text-align: center; padding: 12px; pointer-events: none;

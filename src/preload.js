@@ -55,6 +55,7 @@ contextBridge.exposeInMainWorld('api', {
     openFileInDefaultApp: (fileId, versionId, fileName) =>
       ipcRenderer.invoke('server:openFileInDefaultApp', { fileId, versionId, fileName }),
     getDefaultAppName: (fileName) => ipcRenderer.invoke('server:getDefaultAppName', fileName),
+    generateBOM: (fileId, fileName, folderId) => ipcRenderer.invoke('server:generateBOM', { fileId, fileName, folderId }),
     checkoutFile: (fileId) => ipcRenderer.invoke('server:checkoutFile', fileId),
     checkinFile: (fileId) => ipcRenderer.invoke('server:checkinFile', fileId),
     uploadFilePath: (folderId, filePath) => ipcRenderer.invoke('server:uploadFilePath', { folderId, filePath }),

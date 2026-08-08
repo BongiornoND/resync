@@ -205,9 +205,87 @@ function parseCsv(text) {
 
 const MAX_CSV_PREVIEW_ROWS = 500;
 
+// Detected purely by column shape (bom.py's own CSV header), not by
+// filename — so a BOM keeps its special display no matter what it's
+// named or renamed to.
+const BOM_CSV_COLUMNS = ['qty', 'name', 'kind', 'part_number', 'description', 'material', 'file'];
+
+function isBomCsv(rows) {
+  if (!rows.length) return false;
+  const header = rows[0].map((h) => h.trim().toLowerCase());
+  return BOM_CSV_COLUMNS.every((col) => header.includes(col));
+}
+
+function fileBaseName(p) {
+  if (!p) return '';
+  return p.split(/[\\/]/).pop();
+}
+
+function previewBomTable(rows) {
+  const header = rows[0].map((h) => h.trim().toLowerCase());
+  const idx = Object.fromEntries(BOM_CSV_COLUMNS.map((c) => [c, header.indexOf(c)]));
+  const body = rows.slice(1);
+
+  const wrap = document.createElement('div');
+  wrap.className = 'bom-preview';
+
+  const totalInstances = body.reduce((sum, r) => sum + (parseInt(r[idx.qty], 10) || 0), 0);
+  const missingCount = body.filter((r) => r[idx.kind] === 'missing').length;
+  const summary = document.createElement('div');
+  summary.className = 'bom-summary';
+  summary.textContent =
+    `${body.length} distinct part${body.length === 1 ? '' : 's'}, ${totalInstances} total instance${totalInstances === 1 ? '' : 's'}` +
+    (missingCount ? `, ${missingCount} with no file found` : '');
+  wrap.appendChild(summary);
+
+  const table = document.createElement('table');
+  table.className = 'bom-table';
+  const thead = document.createElement('thead');
+  const headRow = document.createElement('tr');
+  ['Qty', 'Part', 'Part Number', 'Description', 'Material', 'Source'].forEach((label) => {
+    const th = document.createElement('th');
+    th.textContent = label;
+    headRow.appendChild(th);
+  });
+  thead.appendChild(headRow);
+  table.appendChild(thead);
+
+  const tbody = document.createElement('tbody');
+  body.forEach((r) => {
+    const missing = r[idx.kind] === 'missing';
+    const tr = document.createElement('tr');
+    if (missing) tr.classList.add('bom-row-missing');
+    [
+      r[idx.qty] || '0',
+      r[idx.name] || '',
+      r[idx.part_number] || '—',
+      r[idx.description] || '—',
+      r[idx.material] || '—',
+      missing ? 'Missing' : fileBaseName(r[idx.file]) || '—',
+    ].forEach((val) => {
+      const td = document.createElement('td');
+      td.textContent = val;
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  wrap.appendChild(table);
+
+  previewTableContainerEl.appendChild(wrap);
+  previewTableContainerEl.hidden = false;
+}
+
 function previewCsvBytes(bytes, fileName) {
   hideAllPreviewModes();
   const rows = parseCsv(decodeTextBytes(bytes));
+
+  if (isBomCsv(rows)) {
+    previewBomTable(rows);
+    markPreviewReady('Bill of Materials');
+    return;
+  }
+
   const shown = rows.slice(0, MAX_CSV_PREVIEW_ROWS);
 
   const table = document.createElement('table');
@@ -1202,6 +1280,11 @@ function renderFileDetails(file) {
         : ''
     }
     ${
+      file.id && hasApi && SLDASM_EXT.test(file.name)
+        ? `<button id="generate-bom-btn" class="local-tool-btn">Generate BOM&hellip;</button>`
+        : ''
+    }
+    ${
       showLockUi
         ? `<div class="lock-status ${file.lock ? (isMine ? 'mine' : 'other') : 'free'}">
             ${file.lock ? `&#128274; Checked out by ${isMine ? 'you' : escapeHtml(file.lock.name)}` : '&#128275; Available — not checked out'}
@@ -1255,6 +1338,23 @@ function renderFileDetails(file) {
       const label = `Open in ${res.appName}`;
       openFileBtn.dataset.openLabel = label;
       openFileBtn.textContent = label;
+    });
+  }
+
+  const generateBomBtn = document.getElementById('generate-bom-btn');
+  if (generateBomBtn) {
+    generateBomBtn.addEventListener('click', async () => {
+      generateBomBtn.disabled = true;
+      generateBomBtn.textContent = 'Generating…';
+      const res = await window.api.server.generateBOM(file.id, file.name, currentFolderId);
+      generateBomBtn.disabled = false;
+      generateBomBtn.textContent = 'Generate BOM…';
+      if (!res.ok) {
+        alert('Could not generate BOM: ' + res.error);
+        return;
+      }
+      await loadFolder(currentFolderId);
+      alert(`BOM saved as "${res.fileName}".`);
     });
   }
 

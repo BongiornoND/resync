@@ -407,6 +407,13 @@ function getLocalPath(fileId) {
   return fs.existsSync(absPath) ? absPath : null;
 }
 
+// The project's local sync root — a BOM needs to search the whole project
+// tree for sibling/vendor part files, not just the one assembly file.
+function getLocalRoot(fileId) {
+  const found = findByFileId(fileId);
+  return found ? found.entry.localDir : null;
+}
+
 async function guardCheckout(fileId) {
   const found = findByFileId(fileId);
   if (!found) return { ok: true }; // not a synced project — nothing to guard
@@ -560,5 +567,6 @@ module.exports = {
   getStatus,
   guardCheckout,
   getLocalPath,
+  getLocalRoot,
   isLinked,
 };
