@@ -10,6 +10,7 @@ const settingsStore = require('./settings-store');
 const sldprt = require('./sldprt');
 const sldprtColors = require('./sldprt-colors');
 const localSync = require('./local-sync');
+const bom = require('./bom');
 
 let mainWindow;
 
@@ -834,12 +835,11 @@ ipcMain.handle('server:openFileInDefaultApp', async (_event, { fileId, versionId
 });
 
 // A BOM has to walk real sibling/vendor part files on disk to resolve
-// subassemblies (bom.py's own component-file search), so it only works
-// against a project that's synced locally — there's no server-side
-// equivalent of "the whole project tree" to hand it otherwise. Ships as a
-// bundled copy of the other agent's Python scripts (python-bom/) rather
-// than a live reference to their working folder, so a packaged build
-// doesn't depend on a path that only exists on this machine.
+// subassemblies, so it only works against a project that's synced locally —
+// there's no server-side equivalent of "the whole project tree" to hand it
+// otherwise. generateBOM() (src/bom.js) is a JS port of the other agent's
+// bom.py/assembly.py, verified row-for-row against the original's output —
+// no Python dependency, runs in-process.
 ipcMain.handle('server:generateBOM', async (_event, { fileId, fileName, folderId }) => {
   try {
     const localPath = localSync.getLocalPath(fileId);
@@ -854,28 +854,9 @@ ipcMain.handle('server:generateBOM', async (_event, { fileId, fileName, folderId
     const relDir = path.relative(localRoot, path.dirname(localPath));
     const levels = relDir ? relDir.split(path.sep).length : 0;
 
-    const bomScript = path.join(__dirname, '..', 'python-bom', 'bom.py');
+    const { csv } = bom.generateBOM(localPath, { levels });
     const outCsvPath = path.join(app.getPath('temp'), `resync-bom-${Date.now()}-${Math.random().toString(36).slice(2)}.csv`);
-
-    await new Promise((resolve, reject) => {
-      execFile(
-        'python',
-        [bomScript, localPath, '--csv', outCsvPath, '--levels', String(levels)],
-        { timeout: 120000 },
-        (err, _stdout, stderr) => {
-          if (!err) return resolve();
-          if (err.code === 'ENOENT') {
-            reject(new Error('Python 3 is required to generate a BOM but was not found. Install it from python.org and try again.'));
-          } else {
-            reject(new Error(stderr?.trim() || err.message));
-          }
-        }
-      );
-    });
-
-    if (!fs.existsSync(outCsvPath)) {
-      return { ok: false, error: 'BOM generation produced no output — is this a real assembly with at least one component?' };
-    }
+    fs.writeFileSync(outCsvPath, csv, 'utf8');
 
     const bomFileName = `${fileName.replace(/\.sldasm$/i, '')} BOM.csv`;
     const folder = await serverClient.getFolder(folderId);
