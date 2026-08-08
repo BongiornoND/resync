@@ -1322,8 +1322,6 @@ async function selectFile(file, rowEl) {
   await dispatchPreview(c, new Uint8Array(res.data), file.name);
 }
 
-const RENAME_ICON =
-  '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
 const DELETE_ICON =
   '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
 const RESTORE_ICON =
@@ -1429,19 +1427,6 @@ async function openTagPicker(file, anchorEl, onChange) {
   });
 }
 
-async function renameItem(file) {
-  const newName = await showInputModal(`Rename "${file.name}" to:`, file.name);
-  if (!newName || newName === file.name) return;
-  const res = file.isFolder
-    ? await window.api.server.renameFolder(file.id, newName)
-    : await window.api.server.renameFile(file.id, newName);
-  if (!res.ok) {
-    alert('Could not rename: ' + res.error);
-    return;
-  }
-  await loadFolder(currentFolderId);
-}
-
 async function deleteItem(file) {
   const kind = file.isFolder ? 'folder' : 'file';
   if (!confirm(`Delete ${kind} "${file.name}"? You can restore it later from Trash.`)) return;
@@ -1503,7 +1488,6 @@ function renderFileTable(items) {
       <div class="file-size">${file.isFolder ? '—' : formatSize(file.size)}</div>
       <div class="file-modified">${file.isFolder ? '—' : formatDate(file.updatedAt)}</div>
       <div class="row-actions">
-        <button class="row-action-btn rename-btn" title="Rename">${RENAME_ICON}</button>
         <button class="row-action-btn danger delete-btn" title="Delete">${DELETE_ICON}</button>
       </div>`;
 
@@ -1520,10 +1504,6 @@ function renderFileTable(items) {
       }
     }
 
-    row.querySelector('.rename-btn').addEventListener('click', (e) => {
-      e.stopPropagation();
-      renameItem(file);
-    });
     row.querySelector('.delete-btn').addEventListener('click', (e) => {
       e.stopPropagation();
       deleteItem(file);
