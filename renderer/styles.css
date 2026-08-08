@@ -447,6 +447,7 @@ body { font-family: 'Geoform', sans-serif; }
   color: #ffffff; display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0;
 }
 .card-icon-btn:hover { background: rgba(0, 0, 0, 0.65); }
+.card-icon-btn.danger:hover { background: var(--rs-danger); color: #ffffff; }
 .card-name { font-family: 'Geoform', sans-serif; font-weight: 600; font-size: 15px; color: #ffffff; }
 .card-updated { font-size: 12.5px; color: rgba(255, 255, 255, 0.75); margin-top: 3px; }
 .card-footer-row { display: flex; align-items: center; justify-content: space-between; }

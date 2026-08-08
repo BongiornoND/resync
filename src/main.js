@@ -446,6 +446,18 @@ ipcMain.handle('server:createProject', async (_event, name) => {
   }
 });
 
+ipcMain.handle('server:deleteProject', async (_event, projectId) => {
+  try {
+    await serverClient.deleteProject(projectId);
+    // Stops watching/polling if this project had a local sync folder —
+    // leaves the local files untouched, same as a normal unlink.
+    localSync.unlinkSync(projectId);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
 ipcMain.handle('server:getFolder', async (_event, folderId) => {
   try {
     return { ok: true, ...(await serverClient.getFolder(folderId)) };

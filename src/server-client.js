@@ -36,6 +36,13 @@ async function createProject(name) {
   return data;
 }
 
+async function deleteProject(projectId) {
+  const res = await apiFetch(`/api/projects/${projectId}`, { method: 'DELETE' });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Failed to delete project');
+  return data;
+}
+
 async function getFolder(folderId) {
   const res = await apiFetch(`/api/folders/${folderId}`);
   const data = await res.json();
@@ -346,6 +353,7 @@ module.exports = {
   checkHealth,
   listProjects,
   createProject,
+  deleteProject,
   shareProject,
   unshareProject,
   getProjectMembers,

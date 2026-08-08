@@ -37,6 +37,7 @@ contextBridge.exposeInMainWorld('api', {
   server: {
     listProjects: () => ipcRenderer.invoke('server:listProjects'),
     createProject: (name) => ipcRenderer.invoke('server:createProject', name),
+    deleteProject: (projectId) => ipcRenderer.invoke('server:deleteProject', projectId),
     shareProject: (projectId, email, role) => ipcRenderer.invoke('server:shareProject', { projectId, email, role }),
     unshareProject: (projectId, email) => ipcRenderer.invoke('server:unshareProject', { projectId, email }),
     getProjectMembers: (projectId) => ipcRenderer.invoke('server:getProjectMembers', projectId),

@@ -705,6 +705,39 @@ function renderProjectCard(p) {
   });
   actions.appendChild(syncBtn);
 
+  // Owner-only, not admin — this permanently deletes every file, version,
+  // and share on the project with no trash/undo, so it's a step above
+  // what a project admin can otherwise do. Confirmed by typing the project
+  // name back (a plain confirm() is too easy to reflexively click through
+  // for something this irreversible).
+  if (p.isOwner) {
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'card-icon-btn danger';
+    deleteBtn.title = 'Delete project';
+    deleteBtn.innerHTML =
+      '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
+    deleteBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const typed = await showInputModal(
+        `This permanently deletes "${p.name}" — every file, version, and share. This cannot be undone.\n\nType the project name to confirm:`
+      );
+      if (typed === null) return;
+      if (typed !== p.name) {
+        alert('Name did not match — project was not deleted.');
+        return;
+      }
+      deleteBtn.disabled = true;
+      const res = await window.api.server.deleteProject(p.id);
+      if (!res.ok) {
+        alert('Could not delete project: ' + res.error);
+        deleteBtn.disabled = false;
+        return;
+      }
+      loadProjects();
+    });
+    actions.appendChild(deleteBtn);
+  }
+
   const body = document.createElement('div');
   body.className = 'card-body';
   body.innerHTML = `
