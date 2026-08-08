@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const https = require('https');
 const { spawn, execFile } = require('child_process');
+const { Worker } = require('worker_threads');
 const { createStaticServer } = require('./static-server');
 const serverAuth = require('./server-auth');
 const serverClient = require('./server-client');
@@ -10,7 +11,6 @@ const settingsStore = require('./settings-store');
 const sldprt = require('./sldprt');
 const sldprtColors = require('./sldprt-colors');
 const localSync = require('./local-sync');
-const bom = require('./bom');
 
 let mainWindow;
 
@@ -838,8 +838,37 @@ ipcMain.handle('server:openFileInDefaultApp', async (_event, { fileId, versionId
 // subassemblies, so it only works against a project that's synced locally —
 // there's no server-side equivalent of "the whole project tree" to hand it
 // otherwise. generateBOM() (src/bom.js) is a JS port of the other agent's
-// bom.py/assembly.py, verified row-for-row against the original's output —
-// no Python dependency, runs in-process.
+// bom.py/assembly.py, verified row-for-row against the original's output.
+//
+// It's also fully synchronous and CPU-heavy (zlib inflate attempts across
+// most of every candidate file involved) — multiple seconds even for a
+// small assembly. Running that directly on the main process would block
+// its event loop for the whole duration: no repaints, no other IPC
+// serviced, the app reads as hung. Runs in a worker thread instead so the
+// UI stays responsive regardless of how long it takes.
+function runBomWorker(assemblyPath, levels) {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(path.join(__dirname, 'bom-worker.js'), {
+      workerData: { assemblyPath, levels },
+    });
+    const timer = setTimeout(() => {
+      worker.terminate();
+      reject(new Error('BOM generation timed out'));
+    }, 120000);
+    worker.once('message', (msg) => {
+      clearTimeout(timer);
+      worker.terminate();
+      if (msg.ok) resolve(msg.csv);
+      else reject(new Error(msg.error));
+    });
+    worker.once('error', (err) => {
+      clearTimeout(timer);
+      worker.terminate();
+      reject(err);
+    });
+  });
+}
+
 ipcMain.handle('server:generateBOM', async (_event, { fileId, fileName, folderId }) => {
   try {
     const localPath = localSync.getLocalPath(fileId);
@@ -854,7 +883,7 @@ ipcMain.handle('server:generateBOM', async (_event, { fileId, fileName, folderId
     const relDir = path.relative(localRoot, path.dirname(localPath));
     const levels = relDir ? relDir.split(path.sep).length : 0;
 
-    const { csv } = bom.generateBOM(localPath, { levels });
+    const csv = await runBomWorker(localPath, levels);
     const outCsvPath = path.join(app.getPath('temp'), `resync-bom-${Date.now()}-${Math.random().toString(36).slice(2)}.csv`);
     fs.writeFileSync(outCsvPath, csv, 'utf8');
 

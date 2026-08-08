@@ -598,16 +598,28 @@ body { font-family: 'Geoform', sans-serif; }
   background: var(--rs-canvas-bg); color: var(--rs-canvas-text); font-family: 'IBM Plex Mono', monospace; font-size: 12.5px;
   line-height: 1.6; white-space: pre-wrap; word-break: break-word;
 }
-.preview-table-container { position: absolute; inset: 0; overflow: auto; background: #ffffff; padding: 4px; box-sizing: border-box; }
-.preview-table-container table { border-collapse: collapse; font-size: 12px; width: 100%; }
-.preview-table-container th, .preview-table-container td {
-  border: 1px solid rgba(117, 134, 138, 0.25); padding: 5px 9px; text-align: left; white-space: nowrap;
+/* Follows the current theme (same canvas tokens the text/PDF previews use)
+   instead of a fixed white ground unrelated to whichever theme is active. */
+.preview-table-container {
+  position: absolute; inset: 0; overflow: auto; box-sizing: border-box; padding: 4px;
+  background: var(--rs-canvas-bg); color: var(--rs-canvas-text);
 }
-.preview-table-container th { background: #f3f9fa; font-weight: 600; position: sticky; top: 0; }
+.preview-table-container table { border-collapse: collapse; font-size: 12.5px; line-height: 1.4; width: 100%; }
+.preview-table-container th, .preview-table-container td {
+  border: 1px solid var(--rs-border); padding: 6px 11px; text-align: left; white-space: nowrap;
+}
+.preview-table-container th { background: var(--rs-canvas-pdf-strip); font-weight: 600; position: sticky; top: 0; }
 
-.bom-summary { padding: 6px 9px 10px; font-size: 12.5px; color: #75868a; }
+/* Zebra striping + row hover for scanning a dense table by eye; excluded
+   from BOM rows already flagged missing so that state stays unambiguous
+   rather than fading in and out as stripe/hover states pass over it. */
+.preview-table-container tbody tr:nth-child(even):not(.bom-row-missing) td { background: rgba(127, 127, 127, 0.06); }
+.preview-table-container tbody tr:hover:not(.bom-row-missing) td { background: var(--rs-surface-hover); }
+
+.bom-summary { padding: 6px 9px 10px; font-size: 12.5px; color: var(--rs-muted); }
 .bom-table th:first-child, .bom-table td:first-child { text-align: right; font-variant-numeric: tabular-nums; }
 .bom-table th:first-child { color: var(--rs-accent-text); }
+.bom-table td:nth-child(2) { font-weight: 600; }
 .bom-row-missing td { background: var(--rs-danger-soft-bg); color: var(--rs-danger); }
 
 .preview-placeholder {

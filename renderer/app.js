@@ -242,7 +242,11 @@ function previewBomTable(rows) {
   table.className = 'bom-table';
   const thead = document.createElement('thead');
   const headRow = document.createElement('tr');
-  ['Qty', 'Part', 'Part Number', 'Description', 'Material', 'Source'].forEach((label) => {
+  // Material isn't shown — Description is relabeled "Notes", both by
+  // request; the underlying CSV column names are unchanged (bom.js still
+  // writes description/material) so BOM detection stays keyed off the
+  // real file shape, not this display choice.
+  ['Qty', 'Part', 'Part Number', 'Notes', 'Source'].forEach((label) => {
     const th = document.createElement('th');
     th.textContent = label;
     headRow.appendChild(th);
@@ -260,7 +264,6 @@ function previewBomTable(rows) {
       r[idx.name] || '',
       r[idx.part_number] || '—',
       r[idx.description] || '—',
-      r[idx.material] || '—',
       missing ? 'Missing' : fileBaseName(r[idx.file]) || '—',
     ].forEach((val) => {
       const td = document.createElement('td');
