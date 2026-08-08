@@ -12,16 +12,39 @@ async function apiFetch(pathname, options = {}) {
   return pinnedFetch(serverUrl + pathname, { ...options, headers });
 }
 
+// Every route here is assumed to answer with JSON, but that's only true
+// when the client and server are the same version — an older server
+// missing a newer route (or a proxy/crash in between) answers with an HTML
+// error page instead, and res.json() throws a raw parse error before the
+// !res.ok check ever runs. Parsing defensively here means a version
+// mismatch surfaces as a real, readable error instead of a JSON syntax
+// exception with no useful message.
+async function parseJsonBody(res, fallbackLabel) {
+  let data = null;
+  try {
+    data = await res.json();
+  } catch {
+    // not JSON — data stays null, handled below
+  }
+  if (!res.ok) {
+    throw new Error((data && data.error) || `${fallbackLabel} (${res.status} ${res.statusText || 'error'})`);
+  }
+  return data || {};
+}
+
 async function checkHealth(serverUrl) {
   const res = await pinnedFetch(serverUrl.replace(/\/+$/, '') + '/health');
   if (!res.ok) throw new Error('Server not responding');
-  return res.json();
+  try {
+    return await res.json();
+  } catch {
+    throw new Error('That address answered, but not as a Resync server');
+  }
 }
 
 async function listProjects() {
   const res = await apiFetch('/api/projects');
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Failed to list projects');
+  const data = await parseJsonBody(res, 'Failed to list projects');
   return data.projects;
 }
 
@@ -31,22 +54,19 @@ async function createProject(name) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name }),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Failed to create project');
+  const data = await parseJsonBody(res, 'Failed to create project');
   return data;
 }
 
 async function deleteProject(projectId) {
   const res = await apiFetch(`/api/projects/${projectId}`, { method: 'DELETE' });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Failed to delete project');
+  const data = await parseJsonBody(res, 'Failed to delete project');
   return data;
 }
 
 async function getFolder(folderId) {
   const res = await apiFetch(`/api/folders/${folderId}`);
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Failed to load folder');
+  const data = await parseJsonBody(res, 'Failed to load folder');
   return data;
 }
 
@@ -56,8 +76,7 @@ async function createFolder(parentId, name) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ parentId, name }),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Failed to create folder');
+  const data = await parseJsonBody(res, 'Failed to create folder');
   return data;
 }
 
@@ -67,8 +86,7 @@ async function shareProject(projectId, email, role = 'member') {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, role }),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Failed to share project');
+  const data = await parseJsonBody(res, 'Failed to share project');
   return data;
 }
 
@@ -78,15 +96,13 @@ async function unshareProject(projectId, email) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email }),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Failed to remove member');
+  const data = await parseJsonBody(res, 'Failed to remove member');
   return data;
 }
 
 async function getProjectMembers(projectId) {
   const res = await apiFetch(`/api/projects/${projectId}/members`);
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Failed to load members');
+  const data = await parseJsonBody(res, 'Failed to load members');
   return data;
 }
 
@@ -96,8 +112,7 @@ async function updateMemberRole(projectId, userId, role) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ role }),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Failed to update role');
+  const data = await parseJsonBody(res, 'Failed to update role');
   return data;
 }
 
@@ -107,8 +122,7 @@ async function updateProjectSyncMode(projectId, syncMode) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ syncMode }),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Failed to update sync mode');
+  const data = await parseJsonBody(res, 'Failed to update sync mode');
   return data;
 }
 
@@ -119,8 +133,7 @@ async function uploadProjectCover(projectId, filePath, mimeType) {
     body: fs.createReadStream(filePath),
     duplex: 'half',
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Cover upload failed');
+  const data = await parseJsonBody(res, 'Cover upload failed');
   return data;
 }
 
@@ -140,8 +153,7 @@ async function uploadFile(folderId, filePath, fileName) {
     body: fs.createReadStream(filePath),
     duplex: 'half',
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Upload failed');
+  const data = await parseJsonBody(res, 'Upload failed');
   return data;
 }
 
@@ -154,22 +166,19 @@ async function uploadVersion(fileId, filePath, message) {
     body: fs.createReadStream(filePath),
     duplex: 'half',
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Upload failed');
+  const data = await parseJsonBody(res, 'Upload failed');
   return data;
 }
 
 async function restoreVersion(fileId, versionId) {
   const res = await apiFetch(`/api/files/${fileId}/versions/${versionId}/restore`, { method: 'POST' });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Restore failed');
+  const data = await parseJsonBody(res, 'Restore failed');
   return data;
 }
 
 async function listVersions(fileId) {
   const res = await apiFetch(`/api/files/${fileId}/versions`);
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Failed to list versions');
+  const data = await parseJsonBody(res, 'Failed to list versions');
   return data.versions;
 }
 
@@ -184,15 +193,13 @@ async function downloadVersion(versionId) {
 
 async function checkoutFile(fileId) {
   const res = await apiFetch(`/api/files/${fileId}/checkout`, { method: 'POST' });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Checkout failed');
+  const data = await parseJsonBody(res, 'Checkout failed');
   return data.lock;
 }
 
 async function checkinFile(fileId) {
   const res = await apiFetch(`/api/files/${fileId}/checkin`, { method: 'POST' });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Check-in failed');
+  const data = await parseJsonBody(res, 'Check-in failed');
   return data.lock;
 }
 
@@ -205,22 +212,19 @@ async function updateFile(fileId, { name, folderId } = {}) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Update failed');
+  const data = await parseJsonBody(res, 'Update failed');
   return data;
 }
 
 async function deleteFile(fileId) {
   const res = await apiFetch(`/api/files/${fileId}`, { method: 'DELETE' });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Delete failed');
+  const data = await parseJsonBody(res, 'Delete failed');
   return data;
 }
 
 async function restoreFile(fileId) {
   const res = await apiFetch(`/api/files/${fileId}/restore`, { method: 'POST' });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Restore failed');
+  const data = await parseJsonBody(res, 'Restore failed');
   return data;
 }
 
@@ -233,29 +237,25 @@ async function updateFolder(folderId, { name, parentId } = {}) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Update failed');
+  const data = await parseJsonBody(res, 'Update failed');
   return data;
 }
 
 async function deleteFolder(folderId) {
   const res = await apiFetch(`/api/folders/${folderId}`, { method: 'DELETE' });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Delete failed');
+  const data = await parseJsonBody(res, 'Delete failed');
   return data;
 }
 
 async function restoreFolder(folderId) {
   const res = await apiFetch(`/api/folders/${folderId}/restore`, { method: 'POST' });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Restore failed');
+  const data = await parseJsonBody(res, 'Restore failed');
   return data;
 }
 
 async function getTrash(projectId) {
   const res = await apiFetch(`/api/projects/${projectId}/trash`);
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Failed to load trash');
+  const data = await parseJsonBody(res, 'Failed to load trash');
   return data;
 }
 
@@ -273,43 +273,37 @@ async function searchProject(projectId, { query = '', tags = [], exts = [], kind
   if (size) params.set('size', size);
   if (locked) params.set('locked', locked);
   const res = await apiFetch(`/api/projects/${projectId}/search?${params.toString()}`);
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Search failed');
+  const data = await parseJsonBody(res, 'Search failed');
   return data;
 }
 
 async function getProjectActivity(projectId) {
   const res = await apiFetch(`/api/projects/${projectId}/activity`);
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Failed to load activity');
+  const data = await parseJsonBody(res, 'Failed to load activity');
   return data.entries;
 }
 
 async function listNotifications() {
   const res = await apiFetch('/api/notifications');
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Failed to load notifications');
+  const data = await parseJsonBody(res, 'Failed to load notifications');
   return data;
 }
 
 async function markNotificationRead(id) {
   const res = await apiFetch(`/api/notifications/${id}/read`, { method: 'POST' });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Failed to update notification');
+  const data = await parseJsonBody(res, 'Failed to update notification');
   return data;
 }
 
 async function markAllNotificationsRead() {
   const res = await apiFetch('/api/notifications/read-all', { method: 'POST' });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Failed to update notifications');
+  const data = await parseJsonBody(res, 'Failed to update notifications');
   return data;
 }
 
 async function listProjectTags(projectId) {
   const res = await apiFetch(`/api/projects/${projectId}/tags`);
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Failed to load tags');
+  const data = await parseJsonBody(res, 'Failed to load tags');
   return data.tags;
 }
 
@@ -319,15 +313,13 @@ async function createTag(projectId, name, color) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name, color }),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Failed to create tag');
+  const data = await parseJsonBody(res, 'Failed to create tag');
   return data;
 }
 
 async function deleteTag(tagId) {
   const res = await apiFetch(`/api/tags/${tagId}`, { method: 'DELETE' });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Failed to delete tag');
+  const data = await parseJsonBody(res, 'Failed to delete tag');
   return data;
 }
 
@@ -337,15 +329,13 @@ async function addFileTag(fileId, tagId) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ tagId }),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Failed to add tag');
+  const data = await parseJsonBody(res, 'Failed to add tag');
   return data;
 }
 
 async function removeFileTag(fileId, tagId) {
   const res = await apiFetch(`/api/files/${fileId}/tags/${tagId}`, { method: 'DELETE' });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || 'Failed to remove tag');
+  const data = await parseJsonBody(res, 'Failed to remove tag');
   return data;
 }
 
