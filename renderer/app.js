@@ -1563,6 +1563,7 @@ function renderFileTable(items) {
 
 async function loadFolder(folderId) {
   if (!hasApi || !folderId) return;
+  searchFilterActive = false;
   currentFolderId = folderId;
   fileTableBodyEl.innerHTML = '<div class="muted" style="padding:24px">Loading…</div>';
   const res = await window.api.server.getFolder(folderId);
@@ -1848,46 +1849,53 @@ const searchInputEl = document.getElementById('search-input');
 const searchResultsEl = document.getElementById('search-results');
 let searchDebounceTimer = null;
 
-async function runSearch(rawQuery) {
+// Search doesn't show a separate results list — pressing Enter filters the
+// real file table in place (same rows, same click/rename/delete/preview
+// behavior), so a search hit behaves exactly like any other file. This flag
+// just tracks whether the table's current contents are a filtered set
+// rather than a real folder, so the breadcrumb bar can offer a way back.
+let searchFilterActive = false;
+
+function renderSearchFilterBreadcrumb(rawQuery, count) {
+  breadcrumbsEl.innerHTML = '';
+  const label = document.createElement('span');
+  label.className = 'current';
+  label.textContent = `Search results for "${rawQuery.trim()}" (${count})`;
+  const clear = document.createElement('a');
+  clear.textContent = 'Clear';
+  clear.addEventListener('click', () => {
+    searchInputEl.value = '';
+    exitSearchFilter();
+    searchInputEl.focus();
+  });
+  breadcrumbsEl.appendChild(label);
+  breadcrumbsEl.appendChild(document.createTextNode(' · '));
+  breadcrumbsEl.appendChild(clear);
+}
+
+function exitSearchFilter() {
+  if (!searchFilterActive) return;
+  searchFilterActive = false;
+  if (currentFolderId) loadFolder(currentFolderId);
+}
+
+async function applySearchFilter(rawQuery) {
   const parsed = parseSearchQuery(rawQuery);
   const hasFilters =
     parsed.query || parsed.tags.length || parsed.exts.length || parsed.kind !== 'all' || parsed.by || parsed.size || parsed.locked;
-  if (!currentProjectId || !hasFilters) {
-    searchResultsEl.hidden = true;
-    searchResultsEl.innerHTML = '';
+  if (!currentProjectId) return;
+  if (!hasFilters) {
+    exitSearchFilter();
     return;
   }
   const res = await window.api.server.searchProject(currentProjectId, parsed);
   if (!res.ok) return;
 
-  const rows = [
-    ...res.folders.map((f) => ({ ...f, icon: '&#128193;' })),
-    ...res.files.map((f) => ({ ...f, icon: '&#128196;' })),
-  ];
-  searchResultsEl.innerHTML =
-    rows
-      .map(
-        (r) => `
-    <div class="search-result-row" data-id="${r.id}" data-is-folder="${r.isFolder}" data-nav-folder-id="${r.isFolder ? r.parentId : r.folderId}">
-      <span class="search-result-icon">${r.icon}</span>
-      <span class="search-result-name">${escapeHtml(r.name)}</span>
-    </div>`
-      )
-      .join('') || '<div class="muted small" style="padding:8px">No matches</div>';
-  searchResultsEl.hidden = false;
-
-  searchResultsEl.querySelectorAll('.search-result-row').forEach((row) => {
-    row.addEventListener('click', async () => {
-      searchResultsEl.hidden = true;
-      searchInputEl.value = '';
-      switchScreen('browser');
-      const isFolder = row.dataset.isFolder === 'true';
-      const navFolderId = Number(row.dataset.navFolderId);
-      await loadFolder(navFolderId);
-      const targetRow = fileTableBodyEl.querySelector(`.file-row[data-id="${row.dataset.id}"]`);
-      if (targetRow && !isFolder) targetRow.click();
-    });
-  });
+  switchScreen('browser');
+  searchFilterActive = true;
+  const items = [...res.folders, ...res.files];
+  renderFileTable(items);
+  renderSearchFilterBreadcrumb(rawQuery, items.length);
 }
 
 // --- Trash (soft-deleted files/folders for the current project) ---
@@ -2469,12 +2477,9 @@ if (hasApi) {
     clearTimeout(searchDebounceTimer);
     const ctx = detectOperatorContext(searchInputEl);
     if (ctx) {
-      // Suggestion mode: don't also fire a real (necessarily-incomplete)
-      // server search while the value's still being typed/picked.
       searchDebounceTimer = setTimeout(() => showSearchSuggestions(ctx), 120);
     } else {
       clearSuggestions();
-      searchDebounceTimer = setTimeout(() => runSearch(searchInputEl.value), 200);
     }
   });
   searchInputEl.addEventListener('keydown', (e) => {
@@ -2501,14 +2506,21 @@ if (hasApi) {
         return;
       }
     }
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      applySearchFilter(searchInputEl.value);
+      return;
+    }
     if (e.key === 'Escape') {
-      searchResultsEl.hidden = true;
+      if (searchFilterActive) {
+        searchInputEl.value = '';
+        exitSearchFilter();
+      }
       searchInputEl.blur();
     }
   });
   document.addEventListener('click', (e) => {
     if (!searchBoxEl.contains(e.target)) {
-      searchResultsEl.hidden = true;
       clearSuggestions();
     }
   });
