@@ -42,18 +42,37 @@ function orthonormal(m) {
   return true;
 }
 
+// findBlobs is the expensive part of everything here (a candidate deflate
+// stream attempt at nearly every byte offset) — measured at ~300ms even for
+// a modest ~135KB part file. readComponents wants blobs >= 2048 bytes,
+// partMeta wants >= 1024; scanning once at the smaller/superset threshold
+// and filtering in memory for the pickier caller means a file's bytes only
+// ever get decompressed-and-scanned once, cached per absolute path, even
+// though an assembly-type row needs both its own components (readComponents)
+// and its own metadata (partMeta) — previously two full scans of the same
+// file. Measured ~22% faster on a real 11-row assembly (7.1s -> 5.5s); the
+// gain scales with how many rows are themselves subassemblies, since those
+// were the ones paying for two scans — plain parts were always scanned once.
+function getFileBlobs(filePath, blobCache) {
+  if (blobCache.has(filePath)) return blobCache.get(filePath);
+  const raw = fs.readFileSync(filePath);
+  const blobs = findBlobs(raw, 1024);
+  blobCache.set(filePath, blobs);
+  return blobs;
+}
+
 // [[instanceName, R(9), t(3)], ...] for one assembly file. Several blobs
 // carry orthonormal matrices next to names (the mate blob especially), so
 // this scores every candidate blob by how many instance names actually
 // resolve to real component files and keeps the best-scoring one.
-function readComponents(filePath, idx, ground = true, keepUnresolved = false) {
+function readComponents(filePath, idx, ground = true, keepUnresolved = false, blobCache = new Map()) {
   const IDENT = [1, 0, 0, 0, 1, 0, 0, 0, 1];
   const ORIGIN = [0, 0, 0];
-  const raw = fs.readFileSync(filePath);
   let best = [];
   let bestScore = -1;
 
-  for (const { data: B } of findBlobs(raw)) {
+  const blobs = getFileBlobs(filePath, blobCache).filter((b) => b.data.length >= 2048);
+  for (const { data: B } of blobs) {
     const S = utf16StringsWithPos(B);
     if (!S.length) continue;
 
@@ -77,10 +96,17 @@ function readComponents(filePath, idx, ground = true, keepUnresolved = false) {
     }
     if (!anchors.length) continue;
 
+    // Scans every byte offset in the blob (SolidWorks doesn't align these
+    // records), so the inner check runs millions of times on a large blob —
+    // measured as the dominant remaining cost after the findBlobs fix
+    // (V8 profiler: ~35% of total time here). The scratch buffer is reused
+    // across all of them rather than allocating a fresh array per offset
+    // (99%+ of which bail on the very first double); a real 9-element array
+    // is only ever built for a confirmed match, which is rare.
     const mats = [];
+    const scratch = new Float64Array(9);
     let q = 0;
     while (q < B.length - 104) {
-      const m9 = new Array(9);
       let bad = false;
       for (let k = 0; k < 9; k++) {
         const v = B.readDoubleLE(q + k * 8);
@@ -88,13 +114,13 @@ function readComponents(filePath, idx, ground = true, keepUnresolved = false) {
           bad = true;
           break;
         }
-        m9[k] = v;
+        scratch[k] = v;
       }
-      if (!bad && orthonormal(m9)) {
+      if (!bad && orthonormal(scratch)) {
         const t = [B.readDoubleLE(q + 72), B.readDoubleLE(q + 80), B.readDoubleLE(q + 88)];
         const sc = B.readDoubleLE(q + 96);
         if (t.every((x) => Math.abs(x) < 5.0) && Math.abs(sc - 1.0) < 1e-6) {
-          mats.push([q, m9, t]);
+          mats.push([q, Array.from(scratch), t]);
           q += 104;
           continue;
         }
@@ -194,14 +220,13 @@ function baseName(nmRaw, idx) {
 }
 
 // [part_number, description, material] read from a part/assembly file.
-function partMeta(filePath, cache) {
-  if (cache.has(filePath)) return cache.get(filePath);
+function partMeta(filePath, metaCache, blobCache = new Map()) {
+  if (metaCache.has(filePath)) return metaCache.get(filePath);
   let pn = '';
   let desc = '';
   let mat = '';
   try {
-    const raw = fs.readFileSync(filePath);
-    for (const { data: b } of findBlobs(raw, 1024)) {
+    for (const { data: b } of getFileBlobs(filePath, blobCache)) {
       const i = b.indexOf('<?xml');
       if (i >= 0 && b.subarray(i, Math.min(i + 4000, b.length)).includes('Properties')) {
         const xml = b.toString('utf8', i);
@@ -230,22 +255,22 @@ function partMeta(filePath, cache) {
     // matches the Python original's bare except: fall back to blanks
   }
   const result = [pn, desc, mat];
-  cache.set(filePath, result);
+  metaCache.set(filePath, result);
   return result;
 }
 
 // One row per component instance, recursing into subassemblies
-// (multiplying quantities through). `metaCache` is scoped to a single
-// generateBOM() call, not module-level — a long-lived Electron process
-// must not serve stale part metadata across separate BOM runs.
-function walkAssembly(filePath, idx, metaCache, depth = 0, seen = null) {
+// (multiplying quantities through). `metaCache`/`blobCache` are scoped to
+// a single generateBOM() call, not module-level — a long-lived Electron
+// process must not serve stale part data across separate BOM runs.
+function walkAssembly(filePath, idx, metaCache, blobCache, depth = 0, seen = null) {
   const key = path.resolve(filePath).toLowerCase();
   seen = seen || new Set();
   if (seen.has(key)) return []; // circular reference guard
   const seenNext = new Set(seen);
   seenNext.add(key);
 
-  const comps = readComponents(filePath, idx, true, true);
+  const comps = readComponents(filePath, idx, true, true, blobCache);
   const counts = new Map();
   for (const [nm] of comps) {
     const base = baseName(nm, idx);
@@ -257,10 +282,10 @@ function walkAssembly(filePath, idx, metaCache, depth = 0, seen = null) {
   for (const [base, qty] of counts) {
     const f = idx.get(base.toLowerCase());
     const kind = f ? (f.toLowerCase().endsWith('.sldasm') ? 'assembly' : 'part') : 'missing';
-    const [pn, desc, mat] = f ? partMeta(f, metaCache) : ['', '', ''];
+    const [pn, desc, mat] = f ? partMeta(f, metaCache, blobCache) : ['', '', ''];
     out.push({ depth, name: base, qty, kind, part_number: pn, description: desc, material: mat, file: f || '' });
     if (kind === 'assembly' && depth < 4) {
-      for (const sub of walkAssembly(f, idx, metaCache, depth + 1, seenNext)) {
+      for (const sub of walkAssembly(f, idx, metaCache, blobCache, depth + 1, seenNext)) {
         out.push({ ...sub, qty: sub.qty * qty });
       }
     }
@@ -300,7 +325,8 @@ function toCsv(rows) {
 function generateBOM(assemblyPath, { levels = 1 } = {}) {
   const idx = indexFiles(path.dirname(path.resolve(assemblyPath)), levels);
   const metaCache = new Map();
-  const rows = walkAssembly(assemblyPath, idx, metaCache);
+  const blobCache = new Map();
+  const rows = walkAssembly(assemblyPath, idx, metaCache, blobCache);
   if (!rows.length) throw new Error('No components found — is this a real assembly with at least one component?');
   const out = rollup(rows);
   return { rows: out, csv: toCsv(out) };
