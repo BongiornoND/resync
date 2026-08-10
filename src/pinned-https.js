@@ -32,6 +32,34 @@ function fingerprintOf(cert) {
 // UI can actually offer "change server address" in a reasonable window.
 const REQUEST_TIMEOUT_MS = 10000;
 
+// Shared + keep-alive so the many requests this app fires off in quick
+// succession (a single folder open can trigger several) reuse one TLS
+// connection per server instead of paying a full handshake every time.
+// Safe with cert pinning specifically because trust is tracked per-socket
+// below, not per-call, and re-checked against the *current* pin on every
+// request — a reused connection can't silently outlive a pin change.
+//
+// secureOptions disables OpenSSL's TLS session-ticket resumption. That
+// alone wasn't enough, though — https.Agent *also* keeps its own separate
+// session cache (_getSession/_cacheSession, session-ID based, nothing to
+// do with tickets) and hands a cached session to a brand-new socket
+// connecting to the same host. A resumed handshake — ticket- or
+// session-ID-based — never retransmits the full certificate, so
+// getPeerCertificate() comes back empty on that *new* socket even though
+// it never reused an existing connection (verified directly: this is
+// exactly what broke a fresh reconnection during testing, independent of
+// the ticket setting). Every new socket needs the real certificate to
+// verify against the pin, so both resumption paths have to stay off;
+// neither affects keep-alive itself (reusing one already-open,
+// already-verified socket across multiple requests needs no resumption at
+// all, since nothing is being re-established).
+const keepAliveAgent = new https.Agent({
+  keepAlive: true,
+  maxSockets: 6,
+  secureOptions: require('constants').SSL_OP_NO_TICKET,
+});
+keepAliveAgent._getSession = () => undefined;
+
 function pinnedFetch(urlStr, options = {}) {
   return new Promise((resolve, reject) => {
     let url;
@@ -44,7 +72,6 @@ function pinnedFetch(urlStr, options = {}) {
 
     const serverKey = url.origin;
     const pinned = settingsStore.getPinnedFingerprint(serverKey);
-    let trusted = false;
 
     const req = https.request(
       {
@@ -54,22 +81,28 @@ function pinnedFetch(urlStr, options = {}) {
         method: options.method || 'GET',
         headers: options.headers || {},
         rejectUnauthorized: false,
-        // The certificate check below runs in 'secureConnect', which only
-        // fires on a fresh TLS handshake — a keep-alive-reused socket skips
-        // it entirely, and this app's request volume is low enough that
-        // the cost of a full handshake per call is not worth reasoning
-        // about that edge case for. Verified empirically: without this,
-        // the second request over a reused connection was correctly (but
-        // unhelpfully) rejected by the "no verified cert" fail-closed check.
-        agent: false,
+        agent: keepAliveAgent,
       },
       (res) => {
-        if (!trusted) {
-          // Unreachable in practice — the socket is destroyed synchronously
-          // in 'secureConnect' on any mismatch, before a response can
-          // arrive — but never hand back a body without an explicit trust
-          // decision having been made first.
+        const socket = res.socket;
+        // A keep-alive-reused socket skips 'secureConnect' (and the trust
+        // check below) entirely — its verified fingerprint was cached on
+        // the socket object itself the first time *that socket* connected.
+        // Re-checked against the pin fresh on every request (not just
+        // trusted forever once set) so an already-open connection verified
+        // under an old pin can't bypass a since-changed one.
+        if (!socket.__resyncTrustedFingerprint || socket.__resyncTrustedFingerprint !== settingsStore.getPinnedFingerprint(serverKey)) {
           res.destroy();
+          // Deliberately not forcing the socket closed here — manually
+          // tearing down a socket mid-response interacts with Node's own
+          // agent bookkeeping and TLS session-resumption in ways that are
+          // easy to get subtly wrong (verified: it is). __resyncTrustedFingerprint
+          // stays stale on this socket, so every further request over it
+          // keeps failing safe the same way until the connection's own
+          // keep-alive timeout closes it (default: a few seconds of
+          // inactivity) and the agent opens a fresh one next time — a rare
+          // edge case (only reachable via an explicit pin change) that's
+          // fine to self-heal on that timescale rather than forcing it.
           reject(new Error('Refusing to process a response without a verified TLS certificate'));
           return;
         }
@@ -93,6 +126,7 @@ function pinnedFetch(urlStr, options = {}) {
     });
 
     req.on('socket', (socket) => {
+      if (socket.__resyncTrustedFingerprint) return; // already verified on an earlier request over this reused socket
       socket.once('secureConnect', () => {
         const cert = socket.getPeerCertificate(false);
         if (!cert || !cert.raw) {
@@ -102,9 +136,9 @@ function pinnedFetch(urlStr, options = {}) {
         const fingerprint = fingerprintOf(cert);
         if (!pinned) {
           settingsStore.setPinnedFingerprint(serverKey, fingerprint);
-          trusted = true;
+          socket.__resyncTrustedFingerprint = fingerprint;
         } else if (pinned === fingerprint) {
-          trusted = true;
+          socket.__resyncTrustedFingerprint = fingerprint;
         } else {
           req.destroy(
             new CertificateMismatchError(
