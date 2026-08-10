@@ -13,6 +13,8 @@ const previewPdfContainerEl = document.getElementById('preview-pdf-container');
 const previewTextEl = document.getElementById('preview-text');
 const previewTableContainerEl = document.getElementById('preview-table-container');
 const previewPlaceholderEl = document.getElementById('preview-placeholder');
+const previewLoadingEl = document.getElementById('preview-loading');
+const previewLoadingTextEl = document.getElementById('preview-loading-text');
 const previewTypeBadgeEl = document.getElementById('preview-type-badge');
 const previewTreeEl = document.getElementById('preview-assembly-tree');
 const fullscreenCloseBtn = document.getElementById('preview-fullscreen-close');
@@ -66,6 +68,7 @@ function destroyCurrentPdfDoc() {
 function hideAllPreviewModes() {
   previewViewportEl.hidden = true;
   previewViewer.pause();
+  previewLoadingEl.hidden = true;
   previewImageEl.hidden = true;
   previewPdfContainerEl.hidden = true;
   previewTextEl.hidden = true;
@@ -91,10 +94,25 @@ function hideAllPreviewModes() {
 function setPreviewStatus(text) {
   previewRenderEl.classList.remove('has-preview');
   previewTypeBadgeEl.hidden = true;
+  previewLoadingEl.hidden = true;
+  previewPlaceholderEl.hidden = false;
   previewPlaceholderEl.textContent = text;
 }
 
+// Distinct from setPreviewStatus: shown while a file's bytes are actually
+// being fetched/decoded, rather than for a terminal idle/error state — a
+// spinner rather than static text, so "still working" reads differently
+// from "nothing more is going to happen here".
+function setPreviewLoading(text) {
+  previewRenderEl.classList.remove('has-preview');
+  previewTypeBadgeEl.hidden = true;
+  previewPlaceholderEl.hidden = true;
+  previewLoadingTextEl.textContent = text;
+  previewLoadingEl.hidden = false;
+}
+
 function markPreviewReady(typeLabel) {
+  previewLoadingEl.hidden = true;
   previewRenderEl.classList.add('has-preview');
   previewTypeBadgeEl.textContent = typeLabel;
   previewTypeBadgeEl.hidden = false;
@@ -157,7 +175,7 @@ function getPdfjs() {
 // Capped to the first 20 pages — this is a preview, not a document reader.
 async function previewPdfBytes(bytes, fileName, gen) {
   hideAllPreviewModes();
-  setPreviewStatus('Loading ' + fileName + '…');
+  setPreviewLoading('Loading ' + fileName + '…');
   try {
     const pdfjsLib = await getPdfjs();
     if (gen !== previewGeneration) return;
@@ -467,7 +485,7 @@ async function preview3D(kind, bytes, fileName, gen) {
   hideAllPreviewModes();
   previewViewportEl.hidden = false;
   previewViewer.resume();
-  setPreviewStatus('Loading ' + fileName + '…');
+  setPreviewLoading('Loading ' + fileName + '…');
   try {
     if (kind === 'step') await previewViewer.loadStep(bytes, fileName);
     else if (kind === 'iges') await previewViewer.loadIges(bytes, fileName);
@@ -1329,6 +1347,8 @@ async function previewSpecificVersion(file, versionId) {
     setPreviewStatus('Preview requires the desktop app');
     return;
   }
+  hideAllPreviewModes();
+  setPreviewLoading('Loading ' + file.name + '…');
   const res = await window.api.server.downloadVersion(versionId);
   if (!res.ok) {
     setPreviewStatus('Download failed: ' + res.error);
@@ -1591,6 +1611,8 @@ async function selectFile(file, rowEl) {
     setPreviewStatus('Preview requires the desktop app');
     return;
   }
+  hideAllPreviewModes();
+  setPreviewLoading('Loading ' + file.name + '…');
   const res = await window.api.server.downloadVersion(file.latestVersionId);
   if (!res.ok) {
     setPreviewStatus('Download failed: ' + res.error);
