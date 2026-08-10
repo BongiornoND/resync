@@ -103,9 +103,15 @@ function readComponents(filePath, idx, ground = true, keepUnresolved = false, bl
     // across all of them rather than allocating a fresh array per offset
     // (99%+ of which bail on the very first double); a real 9-element array
     // is only ever built for a confirmed match, which is rare.
+    // A matrix match is only ever looked up inside an anchor's own span —
+    // `bounds[0]` is anchors[0][0], so nothing before the first anchor can
+    // ever satisfy `p <= x[0]` for any anchor (anchors are position-sorted,
+    // since S/utf16StringsWithPos yields matches in increasing offset
+    // order). Starting the scan there instead of at 0 skips a region whose
+    // matches could never be used anyway.
     const mats = [];
     const scratch = new Float64Array(9);
-    let q = 0;
+    let q = anchors[0][0];
     while (q < B.length - 104) {
       let bad = false;
       for (let k = 0; k < 9; k++) {
