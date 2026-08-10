@@ -525,7 +525,16 @@ function unlinkSync(projectId) {
 // continuous sync back up — this is what makes "Sync a local copy" a
 // one-time on-switch rather than something the user re-triggers every launch.
 async function resumeAll() {
-  for (const projectId of syncStateStore.listLinkedProjectIds()) {
+  for (const rawProjectId of syncStateStore.listLinkedProjectIds()) {
+    // listLinkedProjectIds() derives ids from manifest filenames, so these
+    // come back as strings ("12") — everywhere else a project id enters
+    // this module (the renderer's sync:getStatus/pull/push/unlink calls,
+    // the initial "Sync a local copy" link) it's the number straight from
+    // a parsed server API response. registry is a plain Map, so a string
+    // key here never matches a later numeric lookup — every project
+    // resumed on app launch silently looked unregistered (no sync UI at
+    // all) until it was re-linked from scratch in that same session.
+    const projectId = Number(rawProjectId);
     const link = syncStateStore.getLink(projectId);
     if (!link) continue;
     await startSync({ projectId, ...link });

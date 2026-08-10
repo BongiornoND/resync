@@ -329,7 +329,13 @@ body { font-family: 'Geoform', sans-serif; }
 .avatar.signed-out { background: transparent; border: 1.5px dashed var(--rs-muted); color: var(--rs-muted); font-size: 16px; }
 .avatar-img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
 
-/* Notification bell */
+/* Notification bell — #notif-panel needs a positioned ancestor to anchor
+   `position: absolute` to; it previously had none (its old sibling-only
+   markup meant .notif-btn's own `position: relative` did nothing for it,
+   since that only establishes a context for *descendants*), so it was
+   positioned relative to the viewport instead — rendered far off-screen,
+   which read as the whole notifications feature silently doing nothing. */
+.notif-wrap { position: relative; display: flex; align-items: center; }
 .notif-btn { position: relative; }
 .notif-dot {
   position: absolute; top: 7px; right: 7px; width: 8px; height: 8px; border-radius: 50%;
@@ -340,6 +346,11 @@ body { font-family: 'Geoform', sans-serif; }
   background: var(--rs-surface); border: 1px solid var(--rs-border); border-radius: 8px;
   box-shadow: 0 12px 32px var(--rs-shadow-2); max-height: 420px; display: flex; flex-direction: column;
 }
+/* Overrides the shared .notif-panel `right` above, which was tuned for the
+   upload-queue/sync-status buttons' own wider text-label wraps — the bell
+   is a small icon-only button, so its panel anchors flush to its own
+   (much narrower) wrap instead. */
+#notif-panel { right: 0; }
 .notif-panel-header {
   display: flex; align-items: center; justify-content: space-between; padding: 12px 14px;
   border-bottom: 1px solid var(--rs-border-soft); font-size: 12.5px; font-weight: 600; color: var(--rs-text);
