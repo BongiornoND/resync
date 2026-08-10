@@ -46,6 +46,23 @@ let csvEditRows = null;
 let csvEditFileId = null;
 let csvEditing = false;
 
+// pdf.js keeps a document's decoded fonts/images/streams alive (in its
+// worker, even the in-process "fake worker" pdf.js falls back to here)
+// until destroy() is called explicitly — letting the resolved document
+// local go out of scope is not enough, per pdf.js's own docs. The destroy()
+// method lives on the *loadingTask* returned directly by getDocument(), not
+// on the PDFDocumentProxy its .promise resolves to (verified against this
+// project's installed pdfjs-dist — the proxy has no destroy() of its own).
+// Tracked here so every new preview (PDF or otherwise) can release the
+// previous one first.
+let currentPdfLoadingTask = null;
+function destroyCurrentPdfDoc() {
+  if (currentPdfLoadingTask) {
+    currentPdfLoadingTask.destroy();
+    currentPdfLoadingTask = null;
+  }
+}
+
 function hideAllPreviewModes() {
   previewViewportEl.hidden = true;
   previewImageEl.hidden = true;
@@ -57,6 +74,7 @@ function hideAllPreviewModes() {
     currentImageObjectUrl = null;
   }
   previewImageEl.src = '';
+  destroyCurrentPdfDoc();
   previewPdfContainerEl.innerHTML = '';
   previewTextEl.textContent = '';
   previewTableContainerEl.innerHTML = '';
@@ -142,8 +160,16 @@ async function previewPdfBytes(bytes, fileName, gen) {
   try {
     const pdfjsLib = await getPdfjs();
     if (gen !== previewGeneration) return;
-    const doc = await pdfjsLib.getDocument({ data: bytes }).promise;
-    if (gen !== previewGeneration) return;
+    const loadingTask = pdfjsLib.getDocument({ data: bytes });
+    const doc = await loadingTask.promise;
+    if (gen !== previewGeneration) {
+      // A newer preview started while this one was loading — this doc
+      // isn't the one currentPdfLoadingTask will track, so nothing else
+      // will ever destroy it. Do that here instead of letting it leak.
+      loadingTask.destroy();
+      return;
+    }
+    currentPdfLoadingTask = loadingTask;
     const maxPages = Math.min(doc.numPages, 20);
     for (let pageNum = 1; pageNum <= maxPages; pageNum++) {
       const page = await doc.getPage(pageNum);

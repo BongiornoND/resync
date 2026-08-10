@@ -158,12 +158,29 @@ export function createViewer({ container, treeContainer, messageEl }) {
   }
   animate();
 
+  // material.dispose() alone does not release its textures (map,
+  // normalMap, envMap, ...) — three.js's own docs call this out explicitly.
+  // Only the glTF loader path actually attaches textures today, but this
+  // keeps clear() correct for any material shape without needing to track
+  // which loader produced it.
+  function disposeMaterial(material) {
+    if (Array.isArray(material)) {
+      material.forEach(disposeMaterial);
+      return;
+    }
+    if (!material) return;
+    for (const value of Object.values(material)) {
+      if (value && value.isTexture) value.dispose();
+    }
+    material.dispose();
+  }
+
   function clear() {
     if (currentModel) {
       scene.remove(currentModel);
       currentModel.traverse((obj) => {
         if (obj.geometry) obj.geometry.dispose();
-        if (obj.material) obj.material.dispose();
+        if (obj.material) disposeMaterial(obj.material);
       });
       currentModel = null;
     }
