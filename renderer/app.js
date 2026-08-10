@@ -65,6 +65,7 @@ function destroyCurrentPdfDoc() {
 
 function hideAllPreviewModes() {
   previewViewportEl.hidden = true;
+  previewViewer.pause();
   previewImageEl.hidden = true;
   previewPdfContainerEl.hidden = true;
   previewTextEl.hidden = true;
@@ -465,6 +466,7 @@ function previewCsvBytes(bytes, fileName, editCtx) {
 async function preview3D(kind, bytes, fileName, gen) {
   hideAllPreviewModes();
   previewViewportEl.hidden = false;
+  previewViewer.resume();
   setPreviewStatus('Loading ' + fileName + '…');
   try {
     if (kind === 'step') await previewViewer.loadStep(bytes, fileName);

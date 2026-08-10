@@ -151,12 +151,28 @@ export function createViewer({ container, treeContainer, messageEl }) {
   new ResizeObserver(resize).observe(container);
   resize();
 
+  // The 3D viewport is only one of several preview modes sharing this panel
+  // (PDF/image/CSV/text are the others) — without this, a full WebGL draw
+  // call still ran 60x/sec the entire time any of those was on screen, or
+  // even when the user was on a completely different screen of the app.
+  // rAF itself keeps ticking either way (cheap); only the actual render
+  // work is skipped.
+  let active = true;
+
   function animate() {
     requestAnimationFrame(animate);
+    if (!active) return;
     controls.update();
     renderer.render(scene, camera);
   }
   animate();
+
+  function pause() {
+    active = false;
+  }
+  function resume() {
+    active = true;
+  }
 
   // material.dispose() alone does not release its textures (map,
   // normalMap, envMap, ...) — three.js's own docs call this out explicitly.
@@ -333,5 +349,5 @@ export function createViewer({ container, treeContainer, messageEl }) {
     });
   }
 
-  return { loadStep, loadIges, loadBrep, loadStl, loadObj, loadGltf, loadMesh, clear, resize, setBackground };
+  return { loadStep, loadIges, loadBrep, loadStl, loadObj, loadGltf, loadMesh, clear, resize, setBackground, pause, resume };
 }
