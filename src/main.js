@@ -717,6 +717,14 @@ ipcMain.handle('server:getTrash', async (_event, projectId) => {
   }
 });
 
+ipcMain.handle('server:getProjectFolders', async (_event, projectId) => {
+  try {
+    return { ok: true, ...(await serverClient.getProjectFolders(projectId)) };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});
+
 ipcMain.handle('server:searchProject', async (_event, { projectId, query, tags, exts, kind, by, size, locked }) => {
   try {
     return { ok: true, ...(await serverClient.searchProject(projectId, { query, tags, exts, kind, by, size, locked })) };

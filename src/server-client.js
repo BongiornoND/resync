@@ -259,6 +259,12 @@ async function getTrash(projectId) {
   return data;
 }
 
+async function getProjectFolders(projectId) {
+  const res = await apiFetch(`/api/projects/${projectId}/folders`);
+  const data = await parseJsonBody(res, 'Failed to load project folders');
+  return data;
+}
+
 // { query, tags, exts, kind, by, size, locked } — matches the search box's
 // tag:/type:/by:/size:/locked: operators (see app.js's parseSearchQuery).
 // kind is 'all' | 'files' | 'folders'; by/size/locked are forwarded as raw
@@ -367,6 +373,7 @@ module.exports = {
   deleteFolder,
   restoreFolder,
   getTrash,
+  getProjectFolders,
   searchProject,
   getProjectActivity,
   listNotifications,

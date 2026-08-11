@@ -1290,20 +1290,77 @@ if (hasApi) {
 }
 let demoMode = false;
 
-function renderTree(breadcrumbs) {
-  treeEl.innerHTML = '';
-  breadcrumbs.forEach((crumb, i) => {
-    const row = document.createElement('div');
-    row.className = 'tree-row' + (i === breadcrumbs.length - 1 ? ' active' : '');
-    row.style.paddingLeft = 10 + i * 14 + 'px';
-    row.innerHTML = `<span class="chevron">${i < breadcrumbs.length - 1 ? '▾' : ''}</span>${escapeHtml(crumb.name)}`;
-    row.addEventListener('click', () => loadFolder(crumb.id));
+// --- Folder tree (sidebar): a full view of every folder in the project,
+// not just the breadcrumb chain down to wherever you currently are. Data is
+// fetched once per project (server:getProjectFolders — a flat list, nested
+// into a tree here) and re-rendered locally on navigation; only refetched
+// when the folder structure itself actually changes (create/delete/move/
+// restore), not on every click. ---
 
-    // Same drop-target behavior as a folder row in the file list — lets
-    // you drag a file straight up to an ancestor folder without having to
-    // navigate there first and lose sight of what you're dragging. This is
-    // the breadcrumb chain, not a full project tree, so only ancestors of
-    // wherever you currently are are reachable this way.
+let allFolders = null; // flat [{id, name, parentId}] for currentProjectId, or null until first loaded
+const expandedFolderIds = new Set();
+
+function buildFolderChildrenMap(folders) {
+  const map = new Map();
+  for (const f of folders) {
+    if (!map.has(f.parentId)) map.set(f.parentId, []);
+    map.get(f.parentId).push(f);
+  }
+  for (const list of map.values()) list.sort((a, b) => a.name.localeCompare(b.name));
+  return map;
+}
+
+// Every ancestor id of folderId, root-first — used to auto-expand the path
+// down to wherever navigation lands (a tree row click, a breadcrumb, a
+// search result), so the sidebar never shows a collapsed tree with the
+// current folder hidden inside it.
+function folderAncestorIds(folderId, folders) {
+  const byId = new Map(folders.map((f) => [f.id, f]));
+  const ids = [];
+  let current = byId.get(folderId);
+  while (current && current.parentId != null) {
+    ids.push(current.parentId);
+    current = byId.get(current.parentId);
+  }
+  return ids;
+}
+
+function renderFolderTree() {
+  treeEl.innerHTML = '';
+  if (!allFolders || !allFolders.length) return;
+  const childrenByParent = buildFolderChildrenMap(allFolders);
+
+  if (currentFolderId) {
+    for (const id of folderAncestorIds(currentFolderId, allFolders)) expandedFolderIds.add(id);
+  }
+
+  function renderNode(folder, depth) {
+    const children = childrenByParent.get(folder.id);
+    const hasChildren = !!children && children.length > 0;
+    const expanded = expandedFolderIds.has(folder.id);
+
+    const row = document.createElement('div');
+    row.className = 'tree-row' + (folder.id === currentFolderId ? ' active' : '');
+    row.style.paddingLeft = 10 + depth * 14 + 'px';
+
+    const chevron = document.createElement('span');
+    chevron.className = 'chevron';
+    chevron.textContent = hasChildren ? (expanded ? '▾' : '▸') : '';
+    if (hasChildren) {
+      chevron.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (expanded) expandedFolderIds.delete(folder.id);
+        else expandedFolderIds.add(folder.id);
+        renderFolderTree();
+      });
+    }
+    row.append(chevron, document.createTextNode(folder.name));
+    row.addEventListener('click', () => loadFolder(folder.id));
+
+    // Every folder in the tree is a drop target now, not just ancestors of
+    // wherever you currently are — the whole point of showing the full
+    // tree is being able to drag a file straight to any folder in the
+    // project without navigating there first.
     row.addEventListener('dragover', (e) => {
       e.preventDefault();
       row.classList.add('drop-target');
@@ -1313,15 +1370,33 @@ function renderTree(breadcrumbs) {
       e.preventDefault();
       row.classList.remove('drop-target');
       if (e.dataTransfer.types.includes('Files')) {
-        await handleExternalFileDrop(e.dataTransfer.files, crumb.id);
+        await handleExternalFileDrop(e.dataTransfer.files, folder.id);
       } else {
         const raw = e.dataTransfer.getData('application/x-resync-item');
-        if (raw) await handleInternalDrop(JSON.parse(raw), crumb.id);
+        if (raw) await handleInternalDrop(JSON.parse(raw), folder.id);
       }
     });
 
     treeEl.appendChild(row);
-  });
+
+    if (hasChildren && expanded) {
+      for (const child of children) renderNode(child, depth + 1);
+    }
+  }
+
+  for (const root of childrenByParent.get(null) || []) renderNode(root, 0);
+}
+
+async function refreshFolderTree() {
+  if (!hasApi || !currentProjectId) {
+    allFolders = null;
+    treeEl.innerHTML = '';
+    return;
+  }
+  const res = await window.api.server.getProjectFolders(currentProjectId);
+  if (!res.ok) return; // a transient failure shouldn't blank out whatever the sidebar already showed
+  allFolders = res.folders;
+  renderFolderTree();
 }
 
 function renderBreadcrumbs(breadcrumbs) {
@@ -1739,6 +1814,7 @@ async function deleteItem(file) {
     renderFileDetails(null);
     clearPreview();
   }
+  if (file.isFolder) await refreshFolderTree();
   await loadFolder(currentFolderId);
 }
 
@@ -1764,6 +1840,7 @@ async function handleInternalDrop(draggedItem, targetFolderId) {
     alert('Could not move: ' + res.error);
     return;
   }
+  if (draggedItem.isFolder) await refreshFolderTree();
   await loadFolder(currentFolderId);
 }
 
@@ -1852,7 +1929,8 @@ async function loadFolder(folderId) {
   }
   currentProjectId = res.folder.projectId;
   currentSyncMode = res.syncMode || 'checkin';
-  renderTree(res.breadcrumbs);
+  if (allFolders) renderFolderTree();
+  else await refreshFolderTree();
   renderBreadcrumbs(res.breadcrumbs);
   renderFileTable(res.items);
   refreshSyncStatus();
@@ -1860,6 +1938,8 @@ async function loadFolder(folderId) {
 
 function openProject(project) {
   currentProjectId = project.id;
+  allFolders = null;
+  expandedFolderIds.clear();
   switchScreen('browser');
   loadFolder(project.rootFolderId);
 }
@@ -1867,6 +1947,7 @@ function openProject(project) {
 function showNoProjectSelected() {
   currentProjectId = null;
   currentFolderId = null;
+  allFolders = null;
   treeEl.innerHTML = '';
   breadcrumbsEl.innerHTML = '';
   fileTableBodyEl.innerHTML =
@@ -1877,6 +1958,7 @@ function showNoProjectSelected() {
 function showSignedOutBrowser() {
   currentProjectId = null;
   currentFolderId = null;
+  allFolders = null;
   treeEl.innerHTML = '';
   breadcrumbsEl.innerHTML = '';
   fileTableBodyEl.innerHTML = '<div class="muted" style="padding:24px">Sign in (top right) to browse your files.</div>';
@@ -1886,6 +1968,7 @@ function showSignedOutBrowser() {
 function showDemoModeBrowser() {
   currentProjectId = null;
   currentFolderId = null;
+  allFolders = null;
   treeEl.innerHTML = '';
   breadcrumbsEl.innerHTML = '<span class="muted">Demo mode</span>';
   fileTableBodyEl.innerHTML =
@@ -2605,6 +2688,7 @@ async function refreshTrash() {
         return;
       }
       await refreshTrash();
+      if (isFolder) await refreshFolderTree();
       if (currentFolderId) await loadFolder(currentFolderId);
     });
   });
@@ -2858,6 +2942,7 @@ if (hasApi) {
       alert('Could not create folder: ' + res.error);
       return;
     }
+    await refreshFolderTree();
     loadFolder(currentFolderId);
   });
 
